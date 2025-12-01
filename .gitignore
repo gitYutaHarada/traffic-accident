@@ -19,6 +19,5 @@ Thumbs.db
 # Data (Large files)
 *.joblib
 *.png
-honhyo_all/
 analysis/
 ml_training/logistic_regression/artifacts/
