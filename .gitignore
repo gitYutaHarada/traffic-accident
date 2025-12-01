@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data (Large files)
+*.csv
+*.joblib
+*.png
+honhyo/
+honhyo_all/
+analysis/
+ml_training/logistic_regression/artifacts/
