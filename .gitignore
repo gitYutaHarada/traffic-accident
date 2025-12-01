@@ -20,7 +20,6 @@ Thumbs.db
 *.csv
 *.joblib
 *.png
-honhyo/
 honhyo_all/
 analysis/
 ml_training/logistic_regression/artifacts/
