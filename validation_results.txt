@@ -1,0 +1,156 @@
+Traceback (most recent call last):
+  File "C:\Users\socce\AppData\Local\Programs\Python\Python314\Lib\site-packages\joblib\externals\loky\backend\resource_tracker.py", line 297, in main
+    raise ValueError(
+    ...<4 lines>...
+    )
+ValueError: Cannot register "REGISTER","rtype":"folder","base64_name" for automatic cleanup: unknown resource type ("QzpcVXNlcnNcc29jY2VcQXBwRGF0YVxMb2NhbFxUZW1wXGpvYmxpYl9tZW1tYXBwaW5nX2ZvbGRlcl80Mjc2XzY2OTgwMDdlYjJiMTQ3YmJiYjZjNzM4YWJhNzU5MzI5XzExZjliNGUxZjJkMzRmYzNhYjYxYzUyOWY2NDJiNzRi"}). Resource type should be one of the following: ['noop', 'folder', 'file']
+Traceback (most recent call last):
+  File "C:\Users\socce\AppData\Local\Programs\Python\Python314\Lib\site-packages\joblib\externals\loky\backend\resource_tracker.py", line 297, in main
+    raise ValueError(
+    ...<4 lines>...
+    )
+ValueError: Cannot register "REGISTER","rtype":"folder","base64_name" for automatic cleanup: unknown resource type ("QzpcVXNlcnNcc29jY2VcQXBwRGF0YVxMb2NhbFxUZW1wXGpvYmxpYl9tZW1tYXBwaW5nX2ZvbGRlcl80Mjc2XzY2OTgwMDdlYjJiMTQ3YmJiYjZjNzM4YWJhNzU5MzI5XzEyMzM3ZGNhZTE0NDQ1MTlhODQxNWJhMjZhMGJiZjlh"}). Resource type should be one of the following: ['noop', 'folder', 'file']
+Traceback (most recent call last):
+  File "C:\Users\socce\AppData\Local\Programs\Python\Python314\Lib\site-packages\joblib\externals\loky\backend\resource_tracker.py", line 297, in main
+    raise ValueError(
+    ...<4 lines>...
+    )
+ValueError: Cannot register "REGISTER","rtype":"folder","base64_name" for automatic cleanup: unknown resource type ("QzpcVXNlcnNcc29jY2VcQXBwRGF0YVxMb2NhbFxUZW1wXGpvYmxpYl9tZW1tYXBwaW5nX2ZvbGRlcl80Mjc2X2RkZTVhYzYyOWY0MzQyZTk5N2FhMWQ5MjAwMmZmMzBmXzNhMmViZGNhOTkzNzRiMDc4ZjBiZTc5YWFkOWQ1ZTdj"}). Resource type should be one of the following: ['noop', 'folder', 'file']
+Traceback (most recent call last):
+  File "C:\Users\socce\AppData\Local\Programs\Python\Python314\Lib\site-packages\joblib\externals\loky\backend\resource_tracker.py", line 297, in main
+    raise ValueError(
+    ...<4 lines>...
+    )
+ValueError: Cannot register "REGISTER","rtype":"folder","base64_name" for automatic cleanup: unknown resource type ("QzpcVXNlcnNcc29jY2VcQXBwRGF0YVxMb2NhbFxUZW1wXGpvYmxpYl9tZW1tYXBwaW5nX2ZvbGRlcl80Mjc2XzY2OTgwMDdlYjJiMTQ3YmJiYjZjNzM4YWJhNzU5MzI5X2Q5YjdiOWRiNTY0NDRkYTA5NTRlMjE1ZjViNWY0NDAz"}). Resource type should be one of the following: ['noop', 'folder', 'file']
+Traceback (most recent call last):
+  File "C:\Users\socce\AppData\Local\Programs\Python\Python314\Lib\site-packages\joblib\externals\loky\backend\resource_tracker.py", line 297, in main
+    raise ValueError(
+    ...<4 lines>...
+    )
+ValueError: Cannot register "REGISTER","rtype":"folder","base64_name" for automatic cleanup: unknown resource type ("QzpcVXNlcnNcc29jY2VcQXBwRGF0YVxMb2NhbFxUZW1wXGpvYmxpYl9tZW1tYXBwaW5nX2ZvbGRlcl80Mjc2X2U1ODk3ZWIyNjU3MzQzYWNiMzQzOWNiY2VhYmIzMzNjX2E4MTJiMGExYjQzNTRjYzliNTAyOWU4M2ZhNjk2NDZm"}). Resource type should be one of the following: ['noop', 'folder', 'file']
+Traceback (most recent call last):
+  File "C:\Users\socce\AppData\Local\Programs\Python\Python314\Lib\site-packages\joblib\externals\loky\backend\resource_tracker.py", line 297, in main
+    raise ValueError(
+    ...<4 lines>...
+    )
+ValueError: Cannot register "REGISTER","rtype":"folder","base64_name" for automatic cleanup: unknown resource type ("QzpcVXNlcnNcc29jY2VcQXBwRGF0YVxMb2NhbFxUZW1wXGpvYmxpYl9tZW1tYXBwaW5nX2ZvbGRlcl80Mjc2XzY2OTgwMDdlYjJiMTQ3YmJiYjZjNzM4YWJhNzU5MzI5XzY5OTBkMGYwNzY0MjRmOWNiN2I4YTY1NzhkMzlhZDA1"}). Resource type should be one of the following: ['noop', 'folder', 'file']
+======================================================================
+ランダムフォレストモデル - 検証曲線・学習曲線分析
+======================================================================
+
+データを読み込んでいます...
+読み込み完了: 1,895,275 行
+
+データ前処理中...
+前処理完了
+
+計算時間短縮のため、データをサンプリング...
+サンプルサイズ: 100,000 件
+
+======================================================================
+1. 検証曲線の作成 (n_estimators)
+======================================================================
+
+検証するパラメータ: [10, 50, 100, 200, 500, 1000]
+検証曲線を計算中... (数分かかります)
+検証曲線を保存: C:\Users\socce\software-lab\traffic-accident\results\visualizations\validation_curve_n_estimators.png
+
+検証曲線の結果:
+n_estimators    訓練スコア        検証スコア        差分        
+--------------------------------------------------
+10              0.9976      0.9911      0.0065
+50              0.9997      0.9911      0.0086
+100             1.0000      0.9911      0.0089
+200             1.0000      0.9911      0.0089
+500             1.0000      0.9911      0.0089
+1000            1.0000      0.9911      0.0089
+
+======================================================================
+2. 検証曲線の作成 (max_depth)
+======================================================================
+
+検証するパラメータ: [5, 10, 15, 20, 25, 30, 'None']
+検証曲線を計算中...
+検証曲線を保存: C:\Users\socce\software-lab\traffic-accident\results\visualizations\validation_curve_max_depth.png
+
+検証曲線の結果:
+max_depth       訓練スコア        検証スコア        差分        
+--------------------------------------------------
+5               0.8653      0.8627      0.0026
+10              0.9873      0.9804      0.0069
+15              0.9995      0.9907      0.0088
+20              1.0000      0.9911      0.0089
+25              1.0000      0.9911      0.0089
+30              1.0000      0.9911      0.0089
+None            1.0000      0.9911      0.0089
+
+======================================================================
+3. 学習曲線の作成
+======================================================================
+
+学習曲線を計算中... (数分かかります)
+学習曲線を保存: C:\Users\socce\software-lab\traffic-accident\results\visualizations\learning_curve.png
+
+学習曲線の結果:
+訓練データ数          訓練スコア        検証スコア        差分        
+-------------------------------------------------------
+6666            1.0000      0.9911      0.0089
+13333           0.9999      0.9911      0.0088
+19999           1.0000      0.9911      0.0089
+26666           1.0000      0.9911      0.0089
+33333           0.9999      0.9911      0.0088
+39999           1.0000      0.9911      0.0088
+46666           1.0000      0.9911      0.0088
+53332           1.0000      0.9911      0.0088
+59999           1.0000      0.9911      0.0089
+66666           1.0000      0.9911      0.0089
+
+======================================================================
+診断結果
+======================================================================
+
+1. n_estimators (決定木の数)
+Traceback (most recent call last):
+  File "C:\Users\socce\software-lab\traffic-accident\scripts\analysis\validation_curves.py", line 291, in <module>
+    main()
+    ~~~~^^
+  File "C:\Users\socce\software-lab\traffic-accident\scripts\analysis\validation_curves.py", line 250, in main
+    print("   \u2713 適切: 過学習の兆候は見られません")
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'cp932' codec can't encode character '\u2713' in position 3: illegal multibyte sequence
+Traceback (most recent call last):
+  File "C:\Users\socce\AppData\Local\Programs\Python\Python314\Lib\site-packages\joblib\externals\loky\backend\resource_tracker.py", line 297, in main
+    raise ValueError(
+    ...<4 lines>...
+    )
+ValueError: Cannot register "UNREGISTER","rtype":"folder","base64_name" for automatic cleanup: unknown resource type ("QzpcVXNlcnNcc29jY2VcQXBwRGF0YVxMb2NhbFxUZW1wXGpvYmxpYl9tZW1tYXBwaW5nX2ZvbGRlcl80Mjc2XzY2OTgwMDdlYjJiMTQ3YmJiYjZjNzM4YWJhNzU5MzI5XzY5OTBkMGYwNzY0MjRmOWNiN2I4YTY1NzhkMzlhZDA1"}). Resource type should be one of the following: ['noop', 'folder', 'file']
+Traceback (most recent call last):
+  File "C:\Users\socce\AppData\Local\Programs\Python\Python314\Lib\site-packages\joblib\externals\loky\backend\resource_tracker.py", line 297, in main
+    raise ValueError(
+    ...<4 lines>...
+    )
+ValueError: Cannot register "UNREGISTER","rtype":"folder","base64_name" for automatic cleanup: unknown resource type ("QzpcVXNlcnNcc29jY2VcQXBwRGF0YVxMb2NhbFxUZW1wXGpvYmxpYl9tZW1tYXBwaW5nX2ZvbGRlcl80Mjc2X2U1ODk3ZWIyNjU3MzQzYWNiMzQzOWNiY2VhYmIzMzNjX2E4MTJiMGExYjQzNTRjYzliNTAyOWU4M2ZhNjk2NDZm"}). Resource type should be one of the following: ['noop', 'folder', 'file']
+Traceback (most recent call last):
+  File "C:\Users\socce\AppData\Local\Programs\Python\Python314\Lib\site-packages\joblib\externals\loky\backend\resource_tracker.py", line 297, in main
+    raise ValueError(
+    ...<4 lines>...
+    )
+ValueError: Cannot register "UNREGISTER","rtype":"folder","base64_name" for automatic cleanup: unknown resource type ("QzpcVXNlcnNcc29jY2VcQXBwRGF0YVxMb2NhbFxUZW1wXGpvYmxpYl9tZW1tYXBwaW5nX2ZvbGRlcl80Mjc2XzY2OTgwMDdlYjJiMTQ3YmJiYjZjNzM4YWJhNzU5MzI5X2Q5YjdiOWRiNTY0NDRkYTA5NTRlMjE1ZjViNWY0NDAz"}). Resource type should be one of the following: ['noop', 'folder', 'file']
+Traceback (most recent call last):
+  File "C:\Users\socce\AppData\Local\Programs\Python\Python314\Lib\site-packages\joblib\externals\loky\backend\resource_tracker.py", line 297, in main
+    raise ValueError(
+    ...<4 lines>...
+    )
+ValueError: Cannot register "UNREGISTER","rtype":"folder","base64_name" for automatic cleanup: unknown resource type ("QzpcVXNlcnNcc29jY2VcQXBwRGF0YVxMb2NhbFxUZW1wXGpvYmxpYl9tZW1tYXBwaW5nX2ZvbGRlcl80Mjc2X2RkZTVhYzYyOWY0MzQyZTk5N2FhMWQ5MjAwMmZmMzBmXzNhMmViZGNhOTkzNzRiMDc4ZjBiZTc5YWFkOWQ1ZTdj"}). Resource type should be one of the following: ['noop', 'folder', 'file']
+Traceback (most recent call last):
+  File "C:\Users\socce\AppData\Local\Programs\Python\Python314\Lib\site-packages\joblib\externals\loky\backend\resource_tracker.py", line 297, in main
+    raise ValueError(
+    ...<4 lines>...
+    )
+ValueError: Cannot register "UNREGISTER","rtype":"folder","base64_name" for automatic cleanup: unknown resource type ("QzpcVXNlcnNcc29jY2VcQXBwRGF0YVxMb2NhbFxUZW1wXGpvYmxpYl9tZW1tYXBwaW5nX2ZvbGRlcl80Mjc2XzY2OTgwMDdlYjJiMTQ3YmJiYjZjNzM4YWJhNzU5MzI5XzEyMzM3ZGNhZTE0NDQ1MTlhODQxNWJhMjZhMGJiZjlh"}). Resource type should be one of the following: ['noop', 'folder', 'file']
+Traceback (most recent call last):
+  File "C:\Users\socce\AppData\Local\Programs\Python\Python314\Lib\site-packages\joblib\externals\loky\backend\resource_tracker.py", line 297, in main
+    raise ValueError(
+    ...<4 lines>...
+    )
+ValueError: Cannot register "UNREGISTER","rtype":"folder","base64_name" for automatic cleanup: unknown resource type ("QzpcVXNlcnNcc29jY2VcQXBwRGF0YVxMb2NhbFxUZW1wXGpvYmxpYl9tZW1tYXBwaW5nX2ZvbGRlcl80Mjc2XzY2OTgwMDdlYjJiMTQ3YmJiYjZjNzM4YWJhNzU5MzI5XzExZjliNGUxZjJkMzRmYzNhYjYxYzUyOWY2NDJiNzRi"}). Resource type should be one of the following: ['noop', 'folder', 'file']
