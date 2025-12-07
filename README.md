@@ -1,45 +1,50 @@
 # 交通事故分析プロジェクト
 
-交通事故データを用いた機械学習による死亡事故リスク予測・分析プロジェクト
+交通事故データを用いた機械学習による**死亡事故リスク予測・分析**プロジェクト
 
-## 📁 プロジェクト構造
+## � プロジェクト概要
+
+警察庁の交通事故統計データ（約190万件）を用いて、**事故発生前に観測可能な情報のみ**で死亡事故リスクを予測するモデルを構築しました。
+
+### 主なモデル改善
+
+| 施策 | 効果 |
+|------|------|
+| **地理情報のエリアID化** | Feature Importance 1位を獲得 |
+| **カテゴリカル変数の適切な扱い** | LightGBMのcategory型を活用 |
+| **カウントエンコーディング** | F1スコア約1.2%向上 |
+| **日時情報の分解** | 月・時・曜日・年を特徴量化 |
+
+## �📁 プロジェクト構造
 
 ```
 traffic-accident/
-├── data/                           # データファイル
+├── data/
 │   ├── raw/                        # 元データ
-│   │   ├── honhyo_all_shishasuu_binary.csv   # 交通事故データ (約190万件)
-│   │   └── codebook_2024.pdf                  # データ項目定義書
-│   ├── processed/                  # 処理済みデータ
-│   │   └── honhyo_all_preaccident_only.csv   # 事前観測可能データのみ
-│   └── codebook/                   # コードブック
-│       └── codebook_2024_extracted.txt        # PDF抽出テキスト
+│   │   └── honhyo_all_shishasuu_binary.csv
+│   └── processed/                  # 加工済みデータ
+│       └── honhyo_model_ready.csv  # エリアID・日時分解済み
 │
-├── scripts/                        # 分析スクリプト
-│   ├── data_processing/            # データ処理
-│   │   ├── create_preaccident_dataset.py     # 事前データセット作成
-│   │   └── extract_pdf.py                     # PDF→テキスト抽出
-│   ├── analysis/                   # 分析スクリプト
-│   │   ├── random_forest_prevention.py       # 🎯 事故予防モデル (推奨)
-│   │   ├── random_forest_analysis.py         # 事故報告分析モデル (参考)
-│   │   └── analyze_tojisha_risk.py           # 当事者種別リスク分析
-│   └── utils/                      # ユーティリティ
-│       └── inspect_data.py                    # データ確認
+├── scripts/
+│   ├── preprocessing/              # 前処理
+│   │   └── create_model_dataset.py # データ加工スクリプト
+│   └── analysis/                   # 分析スクリプト
+│       ├── lightgbm_weighted_optimization.py  # 🎯 LightGBMモデル (推奨)
+│       └── day_of_month_eda.py     # 日別事故傾向分析
 │
-├── results/                        # 分析結果
-│   ├── models/                     # モデル出力
-│   │   ├── output_prevention.txt             # 予防モデル結果
-│   │   ├── output_refined.txt                # 改良モデル結果
-│   │   └── output.txt                        # 初期モデル結果
+├── results/
+│   ├── experiments/                # 実験結果レポート
+│   │   ├── categorical_datetime_experiment.md
+│   │   └── day_of_month_analysis.md
 │   ├── visualizations/             # 可視化
-│   │   ├── feature_importance_prevention.png  # 予防モデル特徴量
-│   │   └── feature_importance.png            # 通常モデル特徴量  
+│   │   ├── feature_importance.png
+│   │   ├── pr_curve_weighted.png
+│   │   └── day_fatality_rate.png
 │   └── analysis/                   # 分析結果CSV
-│       └── tojisha_shubetsu_risk_ranking.csv # 当事者種別リスク表
+│       └── weighted_model_metrics.csv
 │
-└── docs/                           # ドキュメント
-    ├── memo.txt
-    └── header.txt
+└── honhyo_all/details/             # データ定義書
+    └── codebook_extracted.txt
 ```
 
 ## 🚀 使い方
@@ -47,83 +52,60 @@ traffic-accident/
 ### 1. 環境構築
 
 ```powershell
-# 必要なライブラリのインストール
-pip install pandas numpy scikit-learn matplotlib seaborn PyPDF2
+pip install pandas numpy scikit-learn lightgbm matplotlib seaborn
 ```
 
-### 2. データ準備
-
-元データ `honhyo_all_shishasuu_binary.csv` を `data/raw/` に配置
-
-### 3. 事故予防モデルの実行
+### 2. データ前処理
 
 ```powershell
-# 事前観測データセット作成
-python scripts/data_processing/create_preaccident_dataset.py
-
-# 予防モデル訓練・評価
-python scripts/analysis/random_forest_prevention.py
+python scripts/preprocessing/create_model_dataset.py
 ```
 
-### 4. リスク分析
+### 3. モデル学習・評価
 
 ```powershell
-# 当事者種別ごとの死亡率ランキング作成
-python scripts/analysis/analyze_tojisha_risk.py
+python scripts/analysis/lightgbm_weighted_optimization.py
 ```
 
-## 📊 モデル概要
+## � モデル性能
 
-### 🎯 事故予防モデル (推奨)
+### LightGBM + scale_pos_weight モデル
 
-**特徴**: 事故発生**前**に観測可能なデータのみ使用
+| 指標 | スコア |
+|------|--------|
+| **AUC** | 0.885 |
+| **F1 Score** | 0.198 (閾値0.5) |
+| **Recall (発見率)** | 42.2% |
+| **Precision (適合率)** | 12.9% |
 
-- **精度**: 99.16%
-- **特徴量数**: 33項目
-- **用途**: リアルタイム危険予知、カーナビ搭載可能
+> **注**: Recall 80%が必要な場合は閾値を0.032に設定（Precision 3.6%）
 
-**主要リスク要因**:
-1. 発生時刻 (深夜・早朝が危険)
-2. 場所 (緯度・経度)
-3. 自車種別 (二輪車 vs 乗用車)
-4. 市区町村 (地域別リスク)
+### 主要特徴量 (Feature Importance Top 5)
 
-### 📋 事故報告モデル (参考)
+1. **Area_Cluster_ID** (地理エリア) - 10226
+2. **路線コード** - 10055
+3. **市区町村コード** - 2565
+4. **地点コード** - 2060
+5. **発生時** (時間帯) - 884
 
-**特徴**: 事故発生**後**の情報を含む
+## 🔬 実験結果
 
-- **精度**: 99.17%
-- **特徴量数**: 55項目
-- **用途**: 事故分析、統計レポート作成
+詳細は `results/experiments/` を参照:
 
-## 📈 分析結果
-
-### 死亡率ランキング (当事者B)
-
-1. **歩行者**: 5.65% (最も危険)
-2. **列車**: 4.24%
-3. **大型バイク (251~400cc)**: 3.47%
-4. **大型バイク (401~750cc)**: 3.42%
-5. **超大型バイク (751cc~)**: 3.00%
-
-### 実用的な予防策
-
-1. **深夜・早朝の運転を避ける**
-2. **事故多発地点の把握・回避**
-3. **二輪車より乗用車を選択**
-4. **エアバッグ装備車両の使用**
+- **カテゴリカル変数・日時分解**: [categorical_datetime_experiment.md](results/experiments/categorical_datetime_experiment.md)
+- **日別事故傾向分析**: [day_of_month_analysis.md](results/experiments/day_of_month_analysis.md)
 
 ## 🛠️ 技術スタック
 
 - Python 3.x
+- **LightGBM** (勾配ブースティング)
 - pandas, numpy (データ処理)
-- scikit-learn (機械学習)
+- scikit-learn (評価指標, クラスタリング)
 - matplotlib, seaborn (可視化)
-- PyPDF2 (PDF処理)
 
 ## 📝 データ出典
 
-警察庁 交通事故統計データ (2024年版)
+警察庁 交通事故統計データ (2019-2023年)
 
 ## 📄 ライセンス
 
