@@ -1,1 +1,6 @@
 ml_training/advanced_models/artifacts/random_forest/model.joblib
+
+# Large files and Cache
+*.pkl
+__pycache__/
+*.pyc
