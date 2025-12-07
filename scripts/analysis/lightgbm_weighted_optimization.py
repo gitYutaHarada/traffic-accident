@@ -11,8 +11,6 @@ from sklearn.metrics import (
     precision_recall_curve,
     roc_auc_score
 )
-from imblearn.over_sampling import SMOTE
-from imblearn.pipeline import Pipeline
 import lightgbm as lgb
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -24,11 +22,12 @@ mpl.rcParams['font.family'] = 'MS Gothic'
 
 def main():
     """
-    SMOTEとLightGBMを使用し、閾値調整を行ってRecall改善を目指すスクリプト
+    scale_pos_weight（重み付け）を使用し、Recall改善を目指すスクリプト
+    SMOTEは使用せず、純粋な重み付けの効果を検証する
     """
     
     print("=" * 80)
-    print("高度なモデル改善: SMOTE × LightGBM × 閾値調整")
+    print("モデル改善実験: LightGBM + scale_pos_weight (重み付け)")
     print("=" * 80)
     
     # データ読み込み
@@ -79,6 +78,17 @@ def main():
         
     print(f"✓ 前処理完了 - 特徴量数: {X.shape[1]}")
     
+    # クラスの不均衡比を計算し、scale_pos_weightに設定
+    # scale_pos_weight = (negative samples) / (positive samples)
+    pos_count = y.sum()
+    neg_count = len(y) - pos_count
+    scale_pos_weight = neg_count / pos_count
+    
+    print(f"\n⚖️ クラス不均衡比の計算:")
+    print(f"  Negative (0): {neg_count:,}")
+    print(f"  Positive (1): {pos_count:,}")
+    print(f"  Calculated scale_pos_weight: {scale_pos_weight:.2f}")
+    
     # LightGBMのパラメータ
     lgbm_params = {
         'objective': 'binary',
@@ -89,21 +99,22 @@ def main():
         'learning_rate': 0.05,
         'num_leaves': 31,
         'random_state': 42,
-        'n_jobs': -1
+        'n_jobs': -1,
+        'scale_pos_weight': scale_pos_weight  # ★ここが変更点
     }
     
     # 交差検証 (5-fold)
     k_folds = 5
     skf = StratifiedKFold(n_splits=k_folds, shuffle=True, random_state=42)
     
-    print(f"\n🔄 {k_folds}-fold 交差検証を開始 (SMOTE適用)...")
+    print(f"\n🔄 {k_folds}-fold 交差検証を開始 (Weighted)...")
     
     fold_metrics = []
-    threshold_metrics = [] # 閾値ごとの性能を記録
     
     # 全体の予測結果を格納する配列
     y_true_all = []
     y_prob_all = []
+    feature_importances = pd.DataFrame()
     
     for i, (train_index, val_index) in enumerate(skf.split(X, y)):
         print(f"\n--- Fold {i+1}/{k_folds} ---")
@@ -111,12 +122,8 @@ def main():
         X_train, X_val = X.iloc[train_index], X.iloc[val_index]
         y_train, y_val = y.iloc[train_index], y.iloc[val_index]
         
-        # パイプライン構築: SMOTE -> LightGBM
-        # Pipelineを使うことで、検証データにはSMOTEを適用せず、訓練データのみに適用できる（リーク防止）
-        model = Pipeline([
-            ('smote', SMOTE(random_state=42)),
-            ('lgbm', lgb.LGBMClassifier(**lgbm_params))
-        ])
+        # モデル構築（Pipeline不要、直接LGBMClassifier）
+        model = lgb.LGBMClassifier(**lgbm_params)
         
         # 学習
         model.fit(X_train, y_train)
@@ -146,17 +153,28 @@ def main():
             'F1 Score': f1
         })
 
-    # 全データでのPR曲線と最適閾値の探索
+        # 特徴量重要度の取得
+        fi = pd.DataFrame()
+        fi['feature'] = X.columns
+        fi['importance'] = model.feature_importances_
+        fi['fold'] = i + 1
+        feature_importances = pd.concat([feature_importances, fi], axis=0)
+
+    # 全データでの評価
     y_true_all = np.array(y_true_all)
     y_prob_all = np.array(y_prob_all)
     
     # AUCの計算
     auc_score = roc_auc_score(y_true_all, y_prob_all)
     print(f"\n📈 AUC Score: {auc_score:.4f}")
+    
+    with open('results/analysis/weighted_auc_score.txt', 'w') as f:
+        f.write(str(auc_score))
 
+    # PR曲線と最適閾値の探索
     precisions, recalls, thresholds = precision_recall_curve(y_true_all, y_prob_all)
     
-    # F1スコアが最大になる閾値を探す
+    # F1スコアが最大になる閾値
     f1_scores = 2 * (precisions * recalls) / (precisions + recalls + 1e-10)
     best_idx = np.argmax(f1_scores)
     best_threshold = thresholds[best_idx]
@@ -170,13 +188,11 @@ def main():
     print(f"Precision at Best: {precisions[best_idx]:.4f}")
     print(f"Recall at Best: {recalls[best_idx]:.4f}")
     
-    # Recall重視の閾値設定（例: Recall >= 0.5 を満たす中で最大のPrecision）
-    target_recall = 0.5
+    # Recall重視の閾値設定（例: Recall >= 0.8 を満たす中で最大のPrecision）
+    # 重み付けモデルなので、デフォルトでもRecallは高くなるはずだが、さらに探索する
+    target_recall = 0.8
     valid_indices = np.where(recalls >= target_recall)[0]
     if len(valid_indices) > 0:
-        # valid_indicesの中でPrecisionが最大のインデックスを探す
-        # recallsは降順ではない可能性があるため注意が必要だが、通常PR曲線ではトレードオフ
-        # ここでは単純にvalidな中でPrecision最大を選ぶ
         best_prec_idx = valid_indices[np.argmax(precisions[valid_indices])]
         recall_threshold = thresholds[best_prec_idx] if best_prec_idx < len(thresholds) else thresholds[-1]
         
@@ -187,36 +203,51 @@ def main():
     
     # PR曲線のプロット
     plt.figure(figsize=(10, 6))
-    plt.plot(recalls, precisions, marker='.', label='LightGBM + SMOTE')
+    plt.plot(recalls, precisions, marker='.', label='LightGBM + Weighted')
     plt.xlabel('Recall (再現率)')
     plt.ylabel('Precision (適合率)')
-    plt.title('Precision-Recall Curve')
+    plt.title('Precision-Recall Curve (Weighted Model)')
     plt.legend()
     plt.grid(True)
     
-    pr_path = 'results/visualizations/pr_curve_advanced.png'
+    pr_path = 'results/visualizations/pr_curve_weighted.png'
     plt.savefig(pr_path)
     print(f"\n✓ PR曲線を保存: {pr_path}")
     
-    # 最適閾値での混同行列
-    y_pred_best = (y_prob_all >= best_threshold).astype(int)
-    cm = confusion_matrix(y_true_all, y_pred_best)
+    # 混同行列（デフォルト閾値 0.5 での評価が重要）
+    # 重み付けを行った場合、閾値0.5でもRecallが高くなることが期待される
+    y_pred_05 = (y_prob_all >= 0.5).astype(int)
+    cm = confusion_matrix(y_true_all, y_pred_05)
     
     plt.figure(figsize=(8, 6))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Oranges',
                 xticklabels=['非死亡', '死亡'], yticklabels=['非死亡', '死亡'])
-    plt.title(f'Confusion Matrix (Threshold={best_threshold:.4f})')
+    plt.title(f'Confusion Matrix (Weighted, Threshold=0.5)')
     plt.ylabel('Actual')
     plt.xlabel('Predicted')
     
-    cm_path = 'results/visualizations/confusion_matrix_advanced.png'
+    cm_path = 'results/visualizations/confusion_matrix_weighted.png'
     plt.savefig(cm_path)
     print(f"✓ 混同行列を保存: {cm_path}")
     
     # 評価メトリクスの保存
     metrics_df = pd.DataFrame(fold_metrics)
-    metrics_df.to_csv('results/analysis/advanced_model_metrics.csv', index=False)
-    print("✓ 評価メトリクスを保存: results/analysis/advanced_model_metrics.csv")
+    metrics_df.to_csv('results/analysis/weighted_model_metrics.csv', index=False)
+    print("✓ 評価メトリクスを保存: results/analysis/weighted_model_metrics.csv")
+    
+    # 特徴量重要度の集計と保存
+    feat_imp_mean = feature_importances.groupby('feature')['importance'].mean().sort_values(ascending=False)
+    feat_imp_mean.to_csv('results/analysis/feature_importance.csv')
+    print("✓ 特徴量重要度を保存: results/analysis/feature_importance.csv")
+
+    # 特徴量重要度の可視化（Top 20）
+    plt.figure(figsize=(10, 8))
+    sns.barplot(x=feat_imp_mean.head(20).values, y=feat_imp_mean.head(20).index, palette='viridis')
+    plt.title('LightGBM Feature Importance (Top 20)')
+    plt.xlabel('Importance (Split)')
+    plt.tight_layout()
+    plt.savefig('results/visualizations/feature_importance.png')
+    print("✓ 特徴量重要度グラフを保存: results/visualizations/feature_importance.png")
     
     print("\n✅ 実験完了")
 
