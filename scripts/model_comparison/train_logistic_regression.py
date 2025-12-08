@@ -47,13 +47,13 @@ def main():
     
     # データ読み込み(LightGBMと同じデータセット)
     file_path = 'data/processed/honhyo_model_ready.csv'
-    print(f"\n📂 データ読み込み中: {file_path}")
+    print(f"\n[データ] 読み込み中: {file_path}")
     
     try:
         df = pd.read_csv(file_path)
-        print(f"✓ データ読み込み完了: {len(df):,} 件")
+        print(f"[OK] データ読み込み完了: {len(df):,} 件")
     except Exception as e:
-        print(f"❌ エラー: {e}")
+        print(f"[ERROR] エラー: {e}")
         return
     
     # 目的変数
@@ -74,14 +74,14 @@ def main():
     # カラム名の正規化(全角括弧を半角に統一)
     df.columns = df.columns.str.replace('(', '(').str.replace(')', ')')
     
-    print("\n🔧 データ前処理中(事後情報の除外)...")
+    print("\n[処理] データ前処理中(事後情報の除外)...")
     df_clean = df.drop(columns=drop_cols, errors='ignore')
     
     # 特徴量と目的変数
     X = df_clean.drop(columns=[target_col])
     y = df_clean[target_col]
     
-    print(f"✓ 前処理完了 - 特徴量数: {X.shape[1]}")
+    print(f"[OK] 前処理完了 - 特徴量数: {X.shape[1]}")
     
     # カテゴリカル変数と数値変数の分類
     # カウントエンコーディング列は数値として扱う
@@ -113,11 +113,11 @@ def main():
     # 数値変数リスト(カテゴリカルでないもの)
     final_numeric_cols = [c for c in numeric_cols if c not in final_cat_cols]
     
-    print(f"\n🏷️ カテゴリカル変数: {len(final_cat_cols)} カラム")
-    print(f"🔢 数値変数: {len(final_numeric_cols)} カラム")
+    print(f"\n[カテゴリカル変数] {len(final_cat_cols)} カラム")
+    print(f"[数値変数] {len(final_numeric_cols)} カラム")
     
     # カテゴリカル変数を文字列型に統一(OneHotEncoderが型の混在を許さないため)
-    print("\n🔄 カテゴリカル変数を文字列型に変換中...")
+    print("\n[変換] カテゴリカル変数を文字列型に変換中...")
     for col in final_cat_cols:
         if col in X.columns:
             X[col] = X[col].astype(str)
@@ -128,7 +128,7 @@ def main():
         if col in X.columns:
             nunique = X[col].nunique()
             if nunique > high_cardinality_threshold:
-                print(f"  ⚠️ '{col}' のカーディナリティが高い({nunique})ため、上位100個以外を'その他'にまとめます")
+                print(f"  [注意] '{col}' のカーディナリティが高い({nunique})ため、上位100個以外を'その他'にまとめます")
                 top_categories = X[col].value_counts().head(high_cardinality_threshold).index
                 X[col] = X[col].apply(lambda x: x if x in top_categories else 'その他')
     
@@ -169,7 +169,7 @@ def main():
     # クラスの不均衡比を表示
     pos_count = y.sum()
     neg_count = len(y) - pos_count
-    print(f"\n⚖️ クラス不均衡比:")
+    print(f"\n[クラス不均衡比]")
     print(f"  Negative (0): {neg_count:,}")
     print(f"  Positive (1): {pos_count:,}")
     print(f"  比率: {neg_count/pos_count:.2f}:1")
@@ -178,7 +178,7 @@ def main():
     k_folds = 5
     skf = StratifiedKFold(n_splits=k_folds, shuffle=True, random_state=42)
     
-    print(f"\n🔄 {k_folds}-fold 交差検証を開始...")
+    print(f"\n[開始] {k_folds}-fold 交差検証を開始...")
     
     fold_metrics = []
     y_true_all = []
@@ -225,7 +225,7 @@ def main():
     
     # AUCの計算
     auc_score = roc_auc_score(y_true_all, y_prob_all)
-    print(f"\n📈 AUC Score: {auc_score:.4f}")
+    print(f"\n[AUC] Score: {auc_score:.4f}")
     
     # 出力ディレクトリの作成
     output_dir = 'results/model_comparison/logistic_regression'
@@ -245,7 +245,7 @@ def main():
     best_f1 = f1_scores[best_idx]
     
     print("\n" + "=" * 80)
-    print("🎯 最適閾値の探索結果")
+    print("[結果] 最適閾値の探索結果")
     print("=" * 80)
     print(f"Best Threshold (Max F1): {best_threshold:.4f}")
     print(f"Max F1 Score: {best_f1:.4f}")
@@ -275,7 +275,7 @@ def main():
     
     pr_path = f'{output_dir}/pr_curve.png'
     plt.savefig(pr_path)
-    print(f"\n✓ PR曲線を保存: {pr_path}")
+    print(f"\n[OK] PR曲線を保存: {pr_path}")
     plt.close()
     
     # 混同行列(デフォルト閾値 0.5)
@@ -291,17 +291,17 @@ def main():
     
     cm_path = f'{output_dir}/confusion_matrix.png'
     plt.savefig(cm_path)
-    print(f"✓ 混同行列を保存: {cm_path}")
+    print(f"[OK] 混同行列を保存: {cm_path}")
     plt.close()
     
     # 評価メトリクスの保存
     metrics_df = pd.DataFrame(fold_metrics)
     metrics_df.to_csv(f'{output_dir}/metrics.csv', index=False)
-    print(f"✓ 評価メトリクスを保存: {output_dir}/metrics.csv")
+    print(f"[OK] 評価メトリクスを保存: {output_dir}/metrics.csv")
     
     # 平均値の計算
     avg_metrics = metrics_df.mean()
-    print(f"\n📊 5-fold CV 平均スコア:")
+    print(f"\n[結果] 5-fold CV 平均スコア:")
     print(f"  Accuracy:  {avg_metrics['Accuracy']:.4f}")
     print(f"  Precision: {avg_metrics['Precision']:.4f}")
     print(f"  Recall:    {avg_metrics['Recall']:.4f}")
@@ -392,10 +392,10 @@ def main():
     summary_path = f'{output_dir}/summary_report.md'
     with open(summary_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(summary_lines))
-    print(f"✓ サマリーレポートを保存: {summary_path}")
+    print(f"[OK] サマリーレポートを保存: {summary_path}")
     
-    print("\n✅ 実験完了")
-    print(f"\n📂 結果は以下に保存されました: {output_dir}")
+    print("\n[完了] 実験完了")
+    print(f"\n[出力] 結果は以下に保存されました: {output_dir}")
 
 if __name__ == "__main__":
     main()
