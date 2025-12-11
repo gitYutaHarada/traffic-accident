@@ -1,0 +1,114 @@
+📋 4モデル比較実行後のアクションプラン
+現在2つのプロセスが実行中ですね：
+
+run_full_comparison.py
+（実行開始から50分）
+compare_four_models.py
+（実行開始から19分）
+完了後にやるべきことを優先順位順に提示します。
+
+🎯 優先度1: 結果の確認と検証
+ステップ1: 出力ファイルの確認
+bash
+# 生成されたファイルを確認
+ls results/model_comparison/*4models*.csv
+ls results/model_comparison/*4models*.md
+確認するファイル:
+
+logreg_cv_4models_YYYYMMDD_HHMMSS.csv
+rf_cv_4models_YYYYMMDD_HHMMSS.csv
+lightgbm_cv_4models_YYYYMMDD_HHMMSS.csv
+xgboost_cv_4models_YYYYMMDD_HHMMSS.csv
+statistical_test_4models_YYYYMMDD_HHMMSS.csv
+ステップ2: 結果のクイック確認
+python
+# Pythonで簡単に確認
+import pandas as pd
+# CSVファイルを読み込み（最新のタイムスタンプを使用）
+logreg_df = pd.read_csv('results/model_comparison/logreg_cv_4models_YYYYMMDD_HHMMSS.csv')
+rf_df = pd.read_csv('results/model_comparison/rf_cv_4models_YYYYMMDD_HHMMSS.csv')
+lgbm_df = pd.read_csv('results/model_comparison/lightgbm_cv_4models_YYYYMMDD_HHMMSS.csv')
+xgb_df = pd.read_csv('results/model_comparison/xgboost_cv_4models_YYYYMMDD_HHMMSS.csv')
+# 平均PR-AUCを比較
+print("平均PR-AUC:")
+print(f"ロジスティック回帰: {logreg_df['pr_auc'].mean():.4f}")
+print(f"Random Forest: {rf_df['pr_auc'].mean():.4f}")
+print(f"LightGBM: {lgbm_df['pr_auc'].mean():.4f}")
+print(f"XGBoost: {xgb_df['pr_auc'].mean():.4f}")
+🎯 優先度2: 可視化レポートの作成
+既存の結果を基に、包括的な可視化を作成します。
+
+オプションA: 自動可視化スクリプトを実行
+私が可視化スクリプトを作成しましょうか？以下の内容を生成します：
+
+4モデル比較棒グラフ
+PR-AUC, ROC-AUC, F1の比較
+Box Plot
+各モデルのCV結果の分布
+統計的検定結果の表
+Friedman検定のp値と有意差
+詳細Markdownレポート
+エグゼクティブサマリー
+全指標の比較表
+モデル選択の推奨理由
+オプションB: 手動で確認
+bash
+# 統計的検定結果を確認
+cat results/model_comparison/statistical_test_4models_*.csv
+🎯 優先度3: 最良モデルの特定と次のステップ
+ステップ1: 最良モデルを特定
+期待される結果：
+
+LightGBM が最良の可能性が高い
+XGBoost がLightGBMに近い性能
+Random Forest が中間
+ロジスティック回帰 がベースライン
+ステップ2: 次のアクション（3つのオプション）
+オプション1: 交互作用特徴量分析を実行 ⭐⭐⭐⭐⭐
+最良モデル（おそらくLightGBM）に交互作用特徴量を追加して、さらなる性能向上を図る。
+
+bash
+python scripts/feature_engineering/run_interaction_analysis.py
+推定時間: 10-50時間（528通りの組み合わせ）
+
+期待効果: PR-AUC 0.1779 → 0.18X+
+
+オプション2: 詳細な比較レポート作成 ⭐⭐⭐⭐
+4モデルの詳細な分析レポートを作成（卒業研究用）。
+
+含める内容:
+
+モデル間の性能比較
+統計的有意差の解釈
+各モデルの長所・短所
+なぜLightGBMを選んだか（推奨モデルとして）
+特徴量重要度の比較
+オプション3: ハイパーパラメータの微調整 ⭐⭐⭐
+最良モデル（LightGBMまたはXGBoost）のパラメータをさらに調整。
+
+調整項目:
+
+learning_rate
+num_leaves / max_depth
+min_child_samples
+🎯 優先度4: 卒業研究への組み込み
+ステップ1: 結果をまとめる
+モデル比較表を作成
+Excel または Markdown形式
+グラフを準備
+PR曲線
+ROC曲線
+特徴量重要度
+結論を記載
+なぜLightGBMを選んだか
+他のモデルとの性能差
+ステップ2: プレゼン資料への反映
+💡 私の推奨順序
+実行完了後、以下の順序で進めることを推奨します：
+
+即座に実行
+✅ 結果の確認（5分）
+CSVファイルを開いて平均PR-AUCを確認
+✅ 最良モデルの特定（1分）
+どのモデルが最も優れているか確認
+当日中に実行
