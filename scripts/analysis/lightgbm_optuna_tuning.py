@@ -1,11 +1,19 @@
 """
-Optunaを使用したLightGBMハイパーパラメータチューニング
+Optunaを使用したLightGBMハイパーパラメータチューニング（改善版）
 
 目的: PR-AUCを最大化するハイパーパラメータの探索
+改善点:
+  - データパスの更新（honhyo_clean_predictable_only.csv）
+  - 探索空間の拡張（min_child_weight, min_split_gain, path_smooth追加）
+  - 複数評価指標の記録（F1, Recall, Precision, ROC-AUC, PR-AUC）
+  - レポート生成機能の追加
+  - Early stoppingの調整（100 → 50）
 """
 import json
 import os
+import sys
 import warnings
+from datetime import datetime
 from pathlib import Path
 
 import lightgbm as lgb
@@ -32,6 +40,20 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import StratifiedKFold
 
+# ユーティリティモジュールのインポート
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+try:
+    from utils.tuning_utils import (
+        calculate_all_metrics,
+        calculate_metrics_at_thresholds,
+        generate_tuning_report,
+        create_results_directory,
+    )
+    USE_UTILS = True
+except ImportError:
+    print("[WARNING] tuning_utilsのインポートに失敗。基本機能のみ使用します。")
+    USE_UTILS = False
+
 warnings.filterwarnings("ignore")
 
 # 日本語フォントの設定
@@ -39,18 +61,21 @@ mpl.rcParams["font.family"] = "MS Gothic"
 
 # 定数
 RANDOM_STATE = 42
-N_TRIALS = 100  # Optuna試行回数
+N_TRIALS = 200  # Optuna試行回数（100 → 200に増加）
 N_FOLDS = 5  # 交差検証のfold数
 TIMEOUT = 3600 * 2  # 最大2時間でタイムアウト
+EARLY_STOPPING_ROUNDS = 50  # Early stopping（100 → 50に調整）
 
 # パス設定
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-DATA_PATH = BASE_DIR / "data" / "processed" / "honhyo_model_ready.csv"
+DATA_PATH = BASE_DIR / "data" / "processed" / "honhyo_clean_predictable_only.csv"  # 更新
 RESULTS_DIR = BASE_DIR / "results"
+TUNING_DIR = RESULTS_DIR / "tuning"  # チューニング専用ディレクトリ
 ANALYSIS_DIR = RESULTS_DIR / "analysis"
 VIZ_DIR = RESULTS_DIR / "visualizations"
 
 # ディレクトリ作成
+TUNING_DIR.mkdir(parents=True, exist_ok=True)
 ANALYSIS_DIR.mkdir(parents=True, exist_ok=True)
 VIZ_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -135,7 +160,7 @@ def load_and_preprocess_data():
 def objective(trial, X, y, base_scale_pos_weight):
     """Optunaの目的関数 - PR-AUCを最大化"""
     
-    # ハイパーパラメータの探索空間
+    # ハイパーパラメータの探索空間（拡張版）
     params = {
         "objective": "binary",
         "metric": "binary_logloss",
@@ -144,22 +169,27 @@ def objective(trial, X, y, base_scale_pos_weight):
         "random_state": RANDOM_STATE,
         "n_jobs": -1,
         
-        # 探索するパラメータ
-        "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.15, log=True),
-        "num_leaves": trial.suggest_int("num_leaves", 15, 127),
-        "max_depth": trial.suggest_int("max_depth", 3, 12),
-        "min_child_samples": trial.suggest_int("min_child_samples", 10, 200),
+        # 既存の探索パラメータ
+        "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
+        "num_leaves": trial.suggest_int("num_leaves", 31, 255),
+        "max_depth": trial.suggest_int("max_depth", 5, 15),
+        "min_child_samples": trial.suggest_int("min_child_samples", 20, 300),
         "subsample": trial.suggest_float("subsample", 0.6, 1.0),
         "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
         "reg_alpha": trial.suggest_float("reg_alpha", 0.0, 10.0),
         "reg_lambda": trial.suggest_float("reg_lambda", 0.0, 10.0),
-        "n_estimators": trial.suggest_int("n_estimators", 500, 1500),
+        "n_estimators": 10000,  # Early stoppingのため大きく設定
         
-        # scale_pos_weightの微調整（ベース値の±20%）
+        # 新規追加パラメータ
+        "min_child_weight": trial.suggest_float("min_child_weight", 0.001, 10.0, log=True),
+        "min_split_gain": trial.suggest_float("min_split_gain", 0.0, 1.0),
+        "path_smooth": trial.suggest_float("path_smooth", 0.0, 10.0),
+        
+        # scale_pos_weightの探索（ベース値の0.5倍〜2.5倍）
         "scale_pos_weight": trial.suggest_float(
             "scale_pos_weight",
-            base_scale_pos_weight * 0.8,
-            base_scale_pos_weight * 1.2
+            base_scale_pos_weight * 0.5,
+            base_scale_pos_weight * 2.5
         ),
     }
     
@@ -167,6 +197,7 @@ def objective(trial, X, y, base_scale_pos_weight):
     skf = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=RANDOM_STATE)
     
     pr_aucs = []
+    all_metrics = []  # 複数評価指標を記録
     
     for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X, y)):
         X_train, X_val = X.iloc[train_idx], X.iloc[val_idx]
@@ -174,22 +205,51 @@ def objective(trial, X, y, base_scale_pos_weight):
         
         # モデル学習
         model = lgb.LGBMClassifier(**params)
-        model.fit(X_train, y_train)
+        
+        callbacks = [
+            lgb.early_stopping(stopping_rounds=EARLY_STOPPING_ROUNDS, verbose=False),
+            lgb.log_evaluation(period=0)  # ログ出力を抑制
+        ]
+        
+        model.fit(
+            X_train, y_train,
+            eval_set=[(X_val, y_val)],
+            eval_metric="average_precision",
+            callbacks=callbacks
+        )
         
         # 予測
         y_prob = model.predict_proba(X_val)[:, 1]
         
-        # PR-AUCの計算
-        pr_auc = average_precision_score(y_val, y_prob)
-        pr_aucs.append(pr_auc)
+        # 複数評価指標の計算
+        if USE_UTILS:
+            metrics = calculate_all_metrics(y_val, y_prob, threshold=0.5)
+        else:
+            y_pred = (y_prob >= 0.5).astype(int)
+            metrics = {
+                "Accuracy": accuracy_score(y_val, y_pred),
+                "Precision": precision_score(y_val, y_pred, zero_division=0),
+                "Recall": recall_score(y_val, y_pred, zero_division=0),
+                "F1": f1_score(y_val, y_pred, zero_division=0),
+                "ROC_AUC": roc_auc_score(y_val, y_prob),
+                "PR_AUC": average_precision_score(y_val, y_prob),
+            }
         
-        # Pruning: 最初のfoldで性能が悪い場合は早期終了
+        pr_aucs.append(metrics["PR_AUC"])
+        all_metrics.append(metrics)
+        
+        # Pruning: 最初のfoldで性能が極端に悪い場合は早期終了
         if fold_idx == 0:
-            trial.report(pr_auc, fold_idx)
+            trial.report(metrics["PR_AUC"], fold_idx)
             if trial.should_prune():
                 raise optuna.TrialPruned()
     
-    # 平均PR-AUCを返す
+    # 全評価指標の平均を記録（trialにuser_attrsとして保存）
+    for metric_name in ["Accuracy", "Precision", "Recall", "F1", "ROC_AUC", "PR_AUC"]:
+        mean_value = np.mean([m[metric_name] for m in all_metrics])
+        trial.set_user_attr(f"mean_{metric_name}", mean_value)
+    
+    # 平均PR-AUCを返す（最適化目標）
     mean_pr_auc = np.mean(pr_aucs)
     return mean_pr_auc
 
@@ -256,7 +316,18 @@ def evaluate_best_model(study, X, y):
         
         # モデル学習
         model = lgb.LGBMClassifier(**best_params)
-        model.fit(X_train, y_train)
+        
+        callbacks = [
+            lgb.early_stopping(stopping_rounds=EARLY_STOPPING_ROUNDS, verbose=False),
+            lgb.log_evaluation(period=0)
+        ]
+        
+        model.fit(
+            X_train, y_train,
+            eval_set=[(X_val, y_val)],
+            eval_metric="average_precision",
+            callbacks=callbacks
+        )
         
         # 予測
         y_prob = model.predict_proba(X_val)[:, 1]
@@ -308,47 +379,90 @@ def evaluate_best_model(study, X, y):
 
 
 def save_results(study, metrics_df, y_true, y_prob, feature_importances, best_params):
-    """結果の保存"""
+    """結果の保存（改善版：タイムスタンプ付き結果ディレクトリ）"""
     print("\n[SAVE] 結果の保存中...")
     
+    # タイムスタンプ付きディレクトリの作成
+    if USE_UTILS:
+        results_dir = create_results_directory(TUNING_DIR, prefix="tuning")
+    else:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        results_dir = TUNING_DIR / f"tuning_{timestamp}"
+        results_dir.mkdir(parents=True, exist_ok=True)
+    
+    viz_dir = results_dir / "visualizations"
+    viz_dir.mkdir(exist_ok=True)
+    
     # 1. 最良パラメータの保存
-    params_path = ANALYSIS_DIR / "optuna_best_params.json"
+    params_path = results_dir / "best_params.json"
     with open(params_path, "w", encoding="utf-8") as f:
         json.dump(best_params, f, ensure_ascii=False, indent=2)
     print(f"[OK] 最良パラメータ: {params_path}")
     
-    # 2. 最適化履歴の保存
+    # 2. 最適化履歴の保存（全評価指標を含む）
     trials_df = study.trials_dataframe()
-    history_path = ANALYSIS_DIR / "optuna_study_history.csv"
+    history_path = results_dir / "study_history.csv"
     trials_df.to_csv(history_path, index=False, encoding="utf-8-sig")
     print(f"[OK] 最適化履歴: {history_path}")
     
     # 3. 交差検証メトリクスの保存
-    cv_metrics_path = ANALYSIS_DIR / "optuna_cv_metrics.csv"
+    cv_metrics_path = results_dir / "cv_metrics.csv"
     metrics_df.to_csv(cv_metrics_path, index=False, encoding="utf-8-sig")
     print(f"[OK] 交差検証メトリクス: {cv_metrics_path}")
     
     # 4. 特徴量重要度の保存
     feat_imp_mean = feature_importances.groupby("feature")["importance"].mean()
     feat_imp_mean = feat_imp_mean.sort_values(ascending=False)
-    feat_imp_path = ANALYSIS_DIR / "optuna_feature_importance.csv"
+    feat_imp_path = results_dir / "feature_importance.csv"
     feat_imp_mean.to_csv(feat_imp_path, encoding="utf-8-sig")
     print(f"[OK] 特徴量重要度: {feat_imp_path}")
     
-    # 5. 可視化の生成
-    save_visualizations(study, y_true, y_prob, feat_imp_mean)
+    # 5. 閾値分析
+    thresholds = [0.3, 0.4, 0.5, 0.6, 0.7]
+    if USE_UTILS:
+        threshold_metrics = calculate_metrics_at_thresholds(y_true, y_prob, thresholds)
+    else:
+        threshold_metrics = pd.DataFrame([
+            {
+                "Threshold": th,
+                "Precision": precision_score(y_true, (y_prob >= th).astype(int), zero_division=0),
+                "Recall": recall_score(y_true, (y_prob >= th).astype(int), zero_division=0),
+                "F1": f1_score(y_true, (y_prob >= th).astype(int), zero_division=0),
+            }
+            for th in thresholds
+        ])
+    threshold_path = results_dir / "threshold_analysis.csv"
+    threshold_metrics.to_csv(threshold_path, index=False, encoding="utf-8-sig")
+    print(f"[OK] 閾値分析: {threshold_path}")
     
-    print("[DONE] すべての結果を保存しました")
+    # 6. 可視化の生成
+    save_visualizations(study, y_true, y_prob, feat_imp_mean, viz_dir)
+    
+    # 7. 総合レポートの生成
+    if USE_UTILS:
+        report_path = results_dir / "tuning_report.md"
+        study_summary = {
+            "n_trials": len(study.trials),
+            "best_value": study.best_value,
+        }
+        generate_tuning_report(
+            best_params, metrics_df, threshold_metrics, feat_imp_mean,
+            report_path, study_summary
+        )
+    
+    print(f"\n[DONE] すべての結果を以下に保存しました: {results_dir}")
 
 
-def save_visualizations(study, y_true, y_prob, feat_imp_mean):
+def save_visualizations(study, y_true, y_prob, feat_imp_mean, viz_dir=None):
     """可視化の生成と保存"""
+    if viz_dir is None:
+        viz_dir = VIZ_DIR
     print("\n[VIZ] 可視化の生成中...")
     
     # 1. 最適化履歴
     try:
         fig = plot_optimization_history(study)
-        fig.write_image(str(VIZ_DIR / "optuna_optimization_history.png"))
+        fig.write_image(str(viz_dir / "optimization_history.png"))
         print("[OK] 最適化履歴グラフ")
     except Exception as e:
         print(f"  Warning: 最適化履歴グラフの生成に失敗: {e}")
@@ -356,7 +470,7 @@ def save_visualizations(study, y_true, y_prob, feat_imp_mean):
     # 2. パラメータ重要度
     try:
         fig = plot_param_importances(study)
-        fig.write_image(str(VIZ_DIR / "optuna_param_importances.png"))
+        fig.write_image(str(viz_dir / "param_importances.png"))
         print("[OK] パラメータ重要度グラフ")
     except Exception as e:
         print(f"  Warning: パラメータ重要度グラフの生成に失敗: {e}")
@@ -364,7 +478,7 @@ def save_visualizations(study, y_true, y_prob, feat_imp_mean):
     # 3. パラレルコーディネート
     try:
         fig = plot_parallel_coordinate(study)
-        fig.write_image(str(VIZ_DIR / "optuna_parallel_coordinate.png"))
+        fig.write_image(str(viz_dir / "parallel_coordinate.png"))
         print("[OK] パラレルコーディネートグラフ")
     except Exception as e:
         print(f"  Warning: パラレルコーディネートグラフの生成に失敗: {e}")
@@ -379,7 +493,7 @@ def save_visualizations(study, y_true, y_prob, feat_imp_mean):
     plt.title("Precision-Recall Curve (Optuna Optimized Model)")
     plt.legend()
     plt.grid(True)
-    pr_curve_path = VIZ_DIR / "optuna_pr_curve.png"
+    pr_curve_path = viz_dir / "pr_curve.png"
     plt.savefig(pr_curve_path)
     plt.close()
     print("[OK] PR曲線")
@@ -396,7 +510,7 @@ def save_visualizations(study, y_true, y_prob, feat_imp_mean):
     plt.title("Confusion Matrix (Optuna Optimized, Threshold=0.5)")
     plt.ylabel("Actual")
     plt.xlabel("Predicted")
-    cm_path = VIZ_DIR / "optuna_confusion_matrix.png"
+    cm_path = viz_dir / "confusion_matrix.png"
     plt.savefig(cm_path)
     plt.close()
     print("[OK] 混同行列")
@@ -408,7 +522,7 @@ def save_visualizations(study, y_true, y_prob, feat_imp_mean):
     plt.title("Feature Importance Top 20 (Optuna Optimized)")
     plt.xlabel("Importance")
     plt.tight_layout()
-    fi_path = VIZ_DIR / "optuna_feature_importance_top20.png"
+    fi_path = viz_dir / "feature_importance_top20.png"
     plt.savefig(fi_path)
     plt.close()
     print("[OK] 特徴量重要度グラフ")
