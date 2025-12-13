@@ -44,7 +44,7 @@ class ThreeModelComparator:
     
     def __init__(
         self,
-        data_path='data/processed/honhyo_clean_predictable_only.csv',
+        data_path='data/processed/honhyo_clean_road_type.csv',
         target_column='死者数',
         n_folds=5,
         random_state=42
@@ -216,6 +216,28 @@ class ThreeModelComparator:
         """LightGBMモデルの構築"""
         return lgb.LGBMClassifier(**self.lightgbm_params)
     
+    def _prepare_data_for_lightgbm(self, X, is_train=False):
+        """LightGBM用のデータ準備（カテゴリカル変数をエンコード）"""
+        X_prepared = X.copy()
+        
+        # 数値型の欠損値補完
+        for col in self.numeric_cols:
+            if col in X_prepared.columns and X_prepared[col].isna().any():
+                X_prepared[col].fillna(X_prepared[col].median(), inplace=True)
+        
+        # カテゴリカル型をOrdinalEncoderでエンコード
+        if is_train:
+            # 訓練データの場合: エンコーダーを作成・学習
+            self.lightgbm_encoder = OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1)
+            cat_data = X_prepared[self.categorical_cols].fillna('missing')
+            X_prepared[self.categorical_cols] = self.lightgbm_encoder.fit_transform(cat_data)
+        else:
+            # 検証データの場合: 既存のエンコーダーを使用
+            cat_data = X_prepared[self.categorical_cols].fillna('missing')
+            X_prepared[self.categorical_cols] = self.lightgbm_encoder.transform(cat_data)
+        
+        return X_prepared
+    
     def compare_with_cv(self):
         """交差検証で3モデルを比較"""
         print(f"\n[開始] {self.n_folds}-fold 交差検証で3モデルを比較")
@@ -297,16 +319,20 @@ class ThreeModelComparator:
             print("\n[3/3] LightGBM")
             lightgbm_model = self._build_lightgbm_model()
             
+            # LightGBM用にデータを準備（カテゴリカル変数をエンコード）
+            X_train_lgbm = self._prepare_data_for_lightgbm(X_train, is_train=True)
+            X_val_lgbm = self._prepare_data_for_lightgbm(X_val, is_train=False)
+            
             start_time = time.time()
             lightgbm_model.fit(
-                X_train, y_train,
-                eval_set=[(X_val, y_val)],
+                X_train_lgbm, y_train,
+                eval_set=[(X_val_lgbm, y_val)],
                 callbacks=[lgb.early_stopping(50, verbose=False)]
             )
             lightgbm_train_time = time.time() - start_time
             
             start_time = time.time()
-            lightgbm_prob = lightgbm_model.predict_proba(X_val)[:, 1]
+            lightgbm_prob = lightgbm_model.predict_proba(X_val_lgbm)[:, 1]
             lightgbm_pred_time = time.time() - start_time
             
             lightgbm_pred = (lightgbm_prob >= 0.5).astype(int)
@@ -469,7 +495,7 @@ class ThreeModelComparator:
 def main():
     """メイン処理"""
     comparator = ThreeModelComparator(
-        data_path='data/processed/honhyo_clean_predictable_only.csv',
+        data_path='data/processed/honhyo_clean_road_type.csv',
         target_column='死者数',
         n_folds=5,
         random_state=42
