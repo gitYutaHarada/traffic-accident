@@ -277,11 +277,32 @@ class InteractionFeatureEvaluator:
         
         results = []
         
+        # チェックポイントファイルのパス
+        checkpoint_path = Path(self.interaction_dir).parent / 'results' / 'interaction_features_road_type' / 'checkpoint_results.csv'
+        checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # 既存のチェックポイントがあれば読み込み
+        processed_features = set()
+        if checkpoint_path.exists():
+            print(f"\n📂 チェックポイントを検出: {checkpoint_path}")
+            existing_df = pd.read_csv(checkpoint_path)
+            results = existing_df.to_dict('records')
+            processed_features = set(existing_df['feature_name'].tolist())
+            print(f"   既に処理済み: {len(processed_features)} 個")
+            print(f"   残り: {len(self.metadata) - len(processed_features)} 個")
+            print("="*60)
+        
         # プログレスバー付きで評価
-        pbar = tqdm(total=len(self.metadata), desc="交互作用特徴量評価")
+        remaining = len(self.metadata) - len(processed_features)
+        pbar = tqdm(total=remaining, desc="交互作用特徴量評価")
         
         for idx, row in self.metadata.iterrows():
             feature_name = row['feature_name']
+            
+            # 既に処理済みならスキップ
+            if feature_name in processed_features:
+                continue
+            
             feature_path = self.interaction_dir / f"{feature_name}.pkl"
             
             # 交互作用特徴量を読み込み
@@ -302,7 +323,7 @@ class InteractionFeatureEvaluator:
                 delta_f1 = scores['f1'] - baseline_scores['f1']
                 
                 # 結果を記録
-                results.append({
+                result = {
                     'feature_name': feature_name,
                     'feature1': row['feature1'],
                     'feature2': row['feature2'],
@@ -318,7 +339,13 @@ class InteractionFeatureEvaluator:
                     'recall': scores['recall'],
                     'n_unique': row['n_unique'],
                     'missing_rate': row['missing_rate']
-                })
+                }
+                results.append(result)
+                
+                # チェックポイントを保存（10個ごと）
+                if len(results) % 10 == 0:
+                    checkpoint_df = pd.DataFrame(results)
+                    checkpoint_df.to_csv(checkpoint_path, index=False, encoding='utf-8-sig')
                 
             except Exception as e:
                 print(f"\n警告: {feature_name} の評価中にエラー: {e}")
@@ -326,14 +353,23 @@ class InteractionFeatureEvaluator:
             
             pbar.update(1)
             
-            # 進捗を定期的に表示（100個ごと）
-            if (idx + 1) % 100 == 0:
+            # 進捗を定期的に表示（50個ごと）
+            if len(results) % 50 == 0:
                 pbar.set_postfix({
                     'Current': feature_name[:30],
                     'Best Delta': f"{max([r['delta_pr_auc'] for r in results]):.6f}"
                 })
+                # チェックポイントも保存
+                checkpoint_df = pd.DataFrame(results)
+                checkpoint_df.to_csv(checkpoint_path, index=False, encoding='utf-8-sig')
+                print(f"\n💾 チェックポイント保存: {len(results)} 個完了")
         
         pbar.close()
+        
+        # 最終チェックポイント保存
+        checkpoint_df = pd.DataFrame(results)
+        checkpoint_df.to_csv(checkpoint_path, index=False, encoding='utf-8-sig')
+        print(f"\n✅ 最終チェックポイント保存: {checkpoint_path}")
         
         # 結果をDataFrameに変換
         results_df = pd.DataFrame(results)

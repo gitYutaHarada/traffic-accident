@@ -19,7 +19,7 @@ import lightgbm as lgb
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import StratifiedKFold
 from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import StandardScaler, OrdinalEncoder
+from sklearn.preprocessing import StandardScaler, OrdinalEncoder, OneHotEncoder
 from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
@@ -86,7 +86,8 @@ class ThreeModelComparator:
             'n_estimators': 10000,
             'random_state': random_state,
             'n_jobs': -1,
-            'verbose': -1
+            'verbose': -1,
+            #'class_weight': 'balanced' # LightGBMの場合はscale_pos_weightで調整済みだが明示的にbalancedも検討可
         }
         
         # Random Forestのパラメータ
@@ -103,7 +104,7 @@ class ThreeModelComparator:
         }
         
         print("="*80)
-        print("3モデル比較: ロジスティック回帰 vs Random Forest vs LightGBM")
+        print("3モデル比較: ロジスティック回帰(OHE) vs Random Forest(Ordinal) vs LightGBM(Native)")
         print("="*80)
         
         # データ読み込み
@@ -150,22 +151,41 @@ class ThreeModelComparator:
                 self.X[col] = self.X[col].astype(str)
         
     def _build_logreg_pipeline(self):
-        """ロジスティック回帰のパイプライン構築"""
+        """ロジスティック回帰のパイプライン構築 (ハイブリッドEncoding)"""
+        from category_encoders import TargetEncoder
+        
+        # 高多重度カテゴリ（Target Encoding対象）
+        high_cardinality_cols = ['地点コード', '市区町村コード', '警察署等コード', '車道幅員', '速度規制（指定のみ）（当事者A）', '速度規制（指定のみ）（当事者B）']
+        high_cardinality_cols = [c for c in high_cardinality_cols if c in self.categorical_cols]
+        
+        # 低多重度カテゴリ（One-Hot Encoding対象）
+        low_cardinality_cols = [c for c in self.categorical_cols if c not in high_cardinality_cols]
+        
         numeric_transformer = Pipeline(steps=[
             ('imputer', SimpleImputer(strategy='median')),
             ('scaler', StandardScaler())
         ])
         
-        categorical_transformer = Pipeline(steps=[
+        # 高多重度用パイプライン
+        high_card_transformer = Pipeline(steps=[
             ('imputer', SimpleImputer(strategy='most_frequent')),
-            ('encoder', OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1))
+            ('encoder', TargetEncoder(smoothing=10)) # 過学習防止のためスムージング
         ])
         
+        # 低多重度用パイプライン
+        low_card_transformer = Pipeline(steps=[
+            ('imputer', SimpleImputer(strategy='most_frequent')),
+            ('encoder', OneHotEncoder(handle_unknown='ignore', sparse_output=False))
+        ])
+        
+        transformers = [
+            ('num', numeric_transformer, self.numeric_cols),
+            ('high_card', high_card_transformer, high_cardinality_cols),
+            ('low_card', low_card_transformer, low_cardinality_cols)
+        ]
+        
         preprocessor = ColumnTransformer(
-            transformers=[
-                ('num', numeric_transformer, self.numeric_cols),
-                ('cat', categorical_transformer, self.categorical_cols)
-            ],
+            transformers=transformers,
             remainder='drop'
         )
         
@@ -217,7 +237,7 @@ class ThreeModelComparator:
         return lgb.LGBMClassifier(**self.lightgbm_params)
     
     def _prepare_data_for_lightgbm(self, X, is_train=False):
-        """LightGBM用のデータ準備（カテゴリカル変数をエンコード）"""
+        """LightGBM用のデータ準備（カテゴリカル変数をcategory型に変換）"""
         X_prepared = X.copy()
         
         # 数値型の欠損値補完
@@ -225,16 +245,11 @@ class ThreeModelComparator:
             if col in X_prepared.columns and X_prepared[col].isna().any():
                 X_prepared[col].fillna(X_prepared[col].median(), inplace=True)
         
-        # カテゴリカル型をOrdinalEncoderでエンコード
-        if is_train:
-            # 訓練データの場合: エンコーダーを作成・学習
-            self.lightgbm_encoder = OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1)
-            cat_data = X_prepared[self.categorical_cols].fillna('missing')
-            X_prepared[self.categorical_cols] = self.lightgbm_encoder.fit_transform(cat_data)
-        else:
-            # 検証データの場合: 既存のエンコーダーを使用
-            cat_data = X_prepared[self.categorical_cols].fillna('missing')
-            X_prepared[self.categorical_cols] = self.lightgbm_encoder.transform(cat_data)
+        # カテゴリカル型をcategory型に変換
+        for col in self.categorical_cols:
+            if col in X_prepared.columns:
+                # 欠損値は 'missing' として扱う
+                X_prepared[col] = X_prepared[col].fillna('missing').astype('category')
         
         return X_prepared
     
