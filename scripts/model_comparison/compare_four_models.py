@@ -54,7 +54,7 @@ class FourModelComparator:
     
     def __init__(
         self,
-        data_path='data/processed/honhyo_clean_predictable_only.csv',
+        data_path='data/processed/honhyo_clean_road_type.csv.csv',
         target_column='死者数',
         n_folds=5,
         random_state=42
@@ -372,8 +372,12 @@ class FourModelComparator:
             print(f"  開始時刻: {datetime.now().strftime('%H:%M:%S')}")
             xgb_model = self._build_xgboost_model()
             start = time.time()
-            print(f"  学習中 (max_iter={self.xgboost_params['n_estimators']})...")
+            print(f"  学習中 (max_iter={self.xgboost_params['n_estimators']}, early_stop=50)...")
+            
+            # XGBoostのearly stopping callbacks
+            from xgboost.callback import EarlyStopping
             xgb_model.fit(X_train_tree, y_train, eval_set=[(X_val_tree, y_val)],
+                         callbacks=[EarlyStopping(rounds=50, save_best=True)],
                          verbose=False)
             train_time = time.time() - start
             
@@ -385,7 +389,12 @@ class FourModelComparator:
             results['xgboost'].append(self._calculate_metrics(y_val, pred, prob, train_time, pred_time, fold+1))
             print(f"  ✅ 完了 - PR-AUC: {results['xgboost'][-1]['pr_auc']:.4f} | 学習: {train_time:.1f}秒 | 予測: {pred_time:.3f}秒")
             print(f"     その他指標 - ROC-AUC: {results['xgboost'][-1]['roc_auc']:.4f}, F1: {results['xgboost'][-1]['f1']:.4f}")
-            print(f"     Best iteration: {xgb_model.best_iteration}")
+            
+            # best_iterationが存在する場合のみ表示
+            try:
+                print(f"     Best iteration: {xgb_model.best_iteration}")
+            except AttributeError:
+                print(f"     Total iterations: {self.xgboost_params['n_estimators']}")
             
             # Fold完了時の情報
             fold_time = time.time() - fold_start_time

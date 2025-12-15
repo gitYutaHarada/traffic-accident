@@ -49,7 +49,7 @@ class FiveModelComparator:
     
     def __init__(
         self,
-        data_path='data/processed/honhyo_clean_predictable_only.csv',
+        data_path='data/processed/honhyo_clean_road_type.csv',
         target_column='死者数',
         n_folds=5,
         random_state=42

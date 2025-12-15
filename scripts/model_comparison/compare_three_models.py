@@ -19,7 +19,7 @@ import lightgbm as lgb
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import StratifiedKFold
 from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import StandardScaler, OrdinalEncoder
+from sklearn.preprocessing import StandardScaler, OrdinalEncoder, OneHotEncoder
 from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
@@ -44,7 +44,7 @@ class ThreeModelComparator:
     
     def __init__(
         self,
-        data_path='data/processed/honhyo_clean_predictable_only.csv',
+        data_path='data/processed/honhyo_clean_road_type.csv',
         target_column='死者数',
         n_folds=5,
         random_state=42
@@ -86,7 +86,8 @@ class ThreeModelComparator:
             'n_estimators': 10000,
             'random_state': random_state,
             'n_jobs': -1,
-            'verbose': -1
+            'verbose': -1,
+            #'class_weight': 'balanced' # LightGBMの場合はscale_pos_weightで調整済みだが明示的にbalancedも検討可
         }
         
         # Random Forestのパラメータ
@@ -103,7 +104,7 @@ class ThreeModelComparator:
         }
         
         print("="*80)
-        print("3モデル比較: ロジスティック回帰 vs Random Forest vs LightGBM")
+        print("3モデル比較: ロジスティック回帰(OHE) vs Random Forest(Ordinal) vs LightGBM(Native)")
         print("="*80)
         
         # データ読み込み
@@ -150,22 +151,41 @@ class ThreeModelComparator:
                 self.X[col] = self.X[col].astype(str)
         
     def _build_logreg_pipeline(self):
-        """ロジスティック回帰のパイプライン構築"""
+        """ロジスティック回帰のパイプライン構築 (ハイブリッドEncoding)"""
+        from category_encoders import TargetEncoder
+        
+        # 高多重度カテゴリ（Target Encoding対象）
+        high_cardinality_cols = ['地点コード', '市区町村コード', '警察署等コード', '車道幅員', '速度規制（指定のみ）（当事者A）', '速度規制（指定のみ）（当事者B）']
+        high_cardinality_cols = [c for c in high_cardinality_cols if c in self.categorical_cols]
+        
+        # 低多重度カテゴリ（One-Hot Encoding対象）
+        low_cardinality_cols = [c for c in self.categorical_cols if c not in high_cardinality_cols]
+        
         numeric_transformer = Pipeline(steps=[
             ('imputer', SimpleImputer(strategy='median')),
             ('scaler', StandardScaler())
         ])
         
-        categorical_transformer = Pipeline(steps=[
+        # 高多重度用パイプライン
+        high_card_transformer = Pipeline(steps=[
             ('imputer', SimpleImputer(strategy='most_frequent')),
-            ('encoder', OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1))
+            ('encoder', TargetEncoder(smoothing=10)) # 過学習防止のためスムージング
         ])
         
+        # 低多重度用パイプライン
+        low_card_transformer = Pipeline(steps=[
+            ('imputer', SimpleImputer(strategy='most_frequent')),
+            ('encoder', OneHotEncoder(handle_unknown='ignore', sparse_output=False))
+        ])
+        
+        transformers = [
+            ('num', numeric_transformer, self.numeric_cols),
+            ('high_card', high_card_transformer, high_cardinality_cols),
+            ('low_card', low_card_transformer, low_cardinality_cols)
+        ]
+        
         preprocessor = ColumnTransformer(
-            transformers=[
-                ('num', numeric_transformer, self.numeric_cols),
-                ('cat', categorical_transformer, self.categorical_cols)
-            ],
+            transformers=transformers,
             remainder='drop'
         )
         
@@ -215,6 +235,23 @@ class ThreeModelComparator:
     def _build_lightgbm_model(self):
         """LightGBMモデルの構築"""
         return lgb.LGBMClassifier(**self.lightgbm_params)
+    
+    def _prepare_data_for_lightgbm(self, X, is_train=False):
+        """LightGBM用のデータ準備（カテゴリカル変数をcategory型に変換）"""
+        X_prepared = X.copy()
+        
+        # 数値型の欠損値補完
+        for col in self.numeric_cols:
+            if col in X_prepared.columns and X_prepared[col].isna().any():
+                X_prepared[col].fillna(X_prepared[col].median(), inplace=True)
+        
+        # カテゴリカル型をcategory型に変換
+        for col in self.categorical_cols:
+            if col in X_prepared.columns:
+                # 欠損値は 'missing' として扱う
+                X_prepared[col] = X_prepared[col].fillna('missing').astype('category')
+        
+        return X_prepared
     
     def compare_with_cv(self):
         """交差検証で3モデルを比較"""
@@ -297,16 +334,20 @@ class ThreeModelComparator:
             print("\n[3/3] LightGBM")
             lightgbm_model = self._build_lightgbm_model()
             
+            # LightGBM用にデータを準備（カテゴリカル変数をエンコード）
+            X_train_lgbm = self._prepare_data_for_lightgbm(X_train, is_train=True)
+            X_val_lgbm = self._prepare_data_for_lightgbm(X_val, is_train=False)
+            
             start_time = time.time()
             lightgbm_model.fit(
-                X_train, y_train,
-                eval_set=[(X_val, y_val)],
+                X_train_lgbm, y_train,
+                eval_set=[(X_val_lgbm, y_val)],
                 callbacks=[lgb.early_stopping(50, verbose=False)]
             )
             lightgbm_train_time = time.time() - start_time
             
             start_time = time.time()
-            lightgbm_prob = lightgbm_model.predict_proba(X_val)[:, 1]
+            lightgbm_prob = lightgbm_model.predict_proba(X_val_lgbm)[:, 1]
             lightgbm_pred_time = time.time() - start_time
             
             lightgbm_pred = (lightgbm_prob >= 0.5).astype(int)
@@ -469,7 +510,7 @@ class ThreeModelComparator:
 def main():
     """メイン処理"""
     comparator = ThreeModelComparator(
-        data_path='data/processed/honhyo_clean_predictable_only.csv',
+        data_path='data/processed/honhyo_clean_road_type.csv',
         target_column='死者数',
         n_folds=5,
         random_state=42

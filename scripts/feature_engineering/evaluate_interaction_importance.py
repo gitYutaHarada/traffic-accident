@@ -23,6 +23,8 @@ from sklearn.metrics import (
     recall_score,
     f1_score
 )
+from sklearn.preprocessing import OrdinalEncoder
+from sklearn.impute import SimpleImputer
 import pickle
 from pathlib import Path
 from datetime import datetime
@@ -109,6 +111,28 @@ class InteractionFeatureEvaluator:
         self.metadata = pd.read_csv(interaction_metadata_path)
         print(f"交互作用特徴量数: {len(self.metadata)}")
         
+        # 特徴量の分類
+        self.numeric_cols = self.X.select_dtypes(include=['int64', 'float64']).columns.tolist()
+        self.categorical_cols = self.X.select_dtypes(include=['object', 'category']).columns.tolist()
+        
+        # 明示的なカテゴリカル変数の指定（誤判定防止）
+        explicit_cat_cols = [
+            '都道府県コード', '路線コード', '地点コード', '市区町村コード',
+            '昼夜', '天候', '地形', '路面状態', '道路形状', '信号機',
+            '衝突地点', 'ゾーン規制', '中央分離帯施設等', '歩車道区分',
+            '事故類型', '曜日(発生年月日)', '祝日(発生年月日)'
+        ]
+        explicit_cat_cols = [c for c in explicit_cat_cols if c in self.X.columns]
+        self.categorical_cols = list(set(self.categorical_cols + explicit_cat_cols))
+        self.numeric_cols = [c for c in self.numeric_cols if c not in self.categorical_cols]
+        
+        # カテゴリカル変数を文字列に統一
+        for col in self.categorical_cols:
+            if col in self.X.columns:
+                self.X[col] = self.X[col].astype(str)
+                
+        print(f"特徴量: 数値 {len(self.numeric_cols)}個, カテゴリ {len(self.categorical_cols)}個")
+        
     def evaluate_baseline(self):
         """
         ベースラインモデル（交互作用特徴量なし）の性能を評価
@@ -130,6 +154,46 @@ class InteractionFeatureEvaluator:
         
         return cv_scores
     
+    
+    def _prepare_data_for_lightgbm(self, X, is_train=False, encoder=None):
+        """
+        LightGBM用のデータ準備（カテゴリカル変数をエンコード）
+        動的にカテゴリカル列を判定して処理
+        """
+        X_prepared = X.copy()
+        
+        # 数値型とカテゴリカル型を動的に判定
+        numeric_cols = X_prepared.select_dtypes(include=['int64', 'float64']).columns
+        categorical_cols = X_prepared.select_dtypes(include=['object', 'category']).columns
+        
+        # 数値型の欠損値補完
+        for col in numeric_cols:
+            if X_prepared[col].isna().any():
+                X_prepared[col].fillna(X_prepared[col].median(), inplace=True)
+        
+        # カテゴリカル型のエンコード
+        if len(categorical_cols) > 0:
+            # 欠損値を文字列として埋める
+            X_prepared[categorical_cols] = X_prepared[categorical_cols].fillna('missing').astype(str)
+            
+            if is_train:
+                encoder = OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1)
+                X_prepared[categorical_cols] = encoder.fit_transform(X_prepared[categorical_cols])
+                return X_prepared, encoder
+            else:
+                if encoder is None:
+                    # エンコーダーがない場合は新規作成（通常ありえないが安全策）
+                    encoder = OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1)
+                    X_prepared[categorical_cols] = encoder.fit_transform(X_prepared[categorical_cols])
+                else:
+                    X_prepared[categorical_cols] = encoder.transform(X_prepared[categorical_cols])
+                return X_prepared
+        
+        if is_train:
+            return X_prepared, None
+        else:
+            return X_prepared
+
     def _cross_validate(self, X, y):
         """
         5-fold Stratified CVでモデルを評価
@@ -161,17 +225,21 @@ class InteractionFeatureEvaluator:
             X_train, X_val = X.iloc[train_idx], X.iloc[val_idx]
             y_train, y_val = y.iloc[train_idx], y.iloc[val_idx]
             
+            # データ前処理（エンコード）
+            X_train_encoded, encoder = self._prepare_data_for_lightgbm(X_train, is_train=True)
+            X_val_encoded = self._prepare_data_for_lightgbm(X_val, is_train=False, encoder=encoder)
+            
             # モデル訓練
             model = lgb.LGBMClassifier(**self.best_params)
             model.fit(
-                X_train, y_train,
-                eval_set=[(X_val, y_val)],
+                X_train_encoded, y_train,
+                eval_set=[(X_val_encoded, y_val)],
                 callbacks=[lgb.early_stopping(50, verbose=False)]
             )
             
             # 予測
-            y_pred_proba = model.predict_proba(X_val)[:, 1]
-            y_pred = model.predict(X_val)
+            y_pred_proba = model.predict_proba(X_val_encoded)[:, 1]
+            y_pred = model.predict(X_val_encoded)
             
             # 評価指標計算
             scores['pr_auc'].append(average_precision_score(y_val, y_pred_proba))
@@ -209,11 +277,32 @@ class InteractionFeatureEvaluator:
         
         results = []
         
+        # チェックポイントファイルのパス
+        checkpoint_path = Path(self.interaction_dir).parent / 'results' / 'interaction_features_road_type' / 'checkpoint_results.csv'
+        checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # 既存のチェックポイントがあれば読み込み
+        processed_features = set()
+        if checkpoint_path.exists():
+            print(f"\n📂 チェックポイントを検出: {checkpoint_path}")
+            existing_df = pd.read_csv(checkpoint_path)
+            results = existing_df.to_dict('records')
+            processed_features = set(existing_df['feature_name'].tolist())
+            print(f"   既に処理済み: {len(processed_features)} 個")
+            print(f"   残り: {len(self.metadata) - len(processed_features)} 個")
+            print("="*60)
+        
         # プログレスバー付きで評価
-        pbar = tqdm(total=len(self.metadata), desc="交互作用特徴量評価")
+        remaining = len(self.metadata) - len(processed_features)
+        pbar = tqdm(total=remaining, desc="交互作用特徴量評価")
         
         for idx, row in self.metadata.iterrows():
             feature_name = row['feature_name']
+            
+            # 既に処理済みならスキップ
+            if feature_name in processed_features:
+                continue
+            
             feature_path = self.interaction_dir / f"{feature_name}.pkl"
             
             # 交互作用特徴量を読み込み
@@ -234,7 +323,7 @@ class InteractionFeatureEvaluator:
                 delta_f1 = scores['f1'] - baseline_scores['f1']
                 
                 # 結果を記録
-                results.append({
+                result = {
                     'feature_name': feature_name,
                     'feature1': row['feature1'],
                     'feature2': row['feature2'],
@@ -250,7 +339,13 @@ class InteractionFeatureEvaluator:
                     'recall': scores['recall'],
                     'n_unique': row['n_unique'],
                     'missing_rate': row['missing_rate']
-                })
+                }
+                results.append(result)
+                
+                # チェックポイントを保存（10個ごと）
+                if len(results) % 10 == 0:
+                    checkpoint_df = pd.DataFrame(results)
+                    checkpoint_df.to_csv(checkpoint_path, index=False, encoding='utf-8-sig')
                 
             except Exception as e:
                 print(f"\n警告: {feature_name} の評価中にエラー: {e}")
@@ -258,14 +353,23 @@ class InteractionFeatureEvaluator:
             
             pbar.update(1)
             
-            # 進捗を定期的に表示（100個ごと）
-            if (idx + 1) % 100 == 0:
+            # 進捗を定期的に表示（50個ごと）
+            if len(results) % 50 == 0:
                 pbar.set_postfix({
                     'Current': feature_name[:30],
                     'Best Delta': f"{max([r['delta_pr_auc'] for r in results]):.6f}"
                 })
+                # チェックポイントも保存
+                checkpoint_df = pd.DataFrame(results)
+                checkpoint_df.to_csv(checkpoint_path, index=False, encoding='utf-8-sig')
+                print(f"\n💾 チェックポイント保存: {len(results)} 個完了")
         
         pbar.close()
+        
+        # 最終チェックポイント保存
+        checkpoint_df = pd.DataFrame(results)
+        checkpoint_df.to_csv(checkpoint_path, index=False, encoding='utf-8-sig')
+        print(f"\n✅ 最終チェックポイント保存: {checkpoint_path}")
         
         # 結果をDataFrameに変換
         results_df = pd.DataFrame(results)
