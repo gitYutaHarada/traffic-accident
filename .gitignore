@@ -4,3 +4,9 @@ ml_training/advanced_models/artifacts/random_forest/model.joblib
 *.pkl
 __pycache__/
 *.pyc
+
+# Generated files and results
+*.png
+*.jpg
+results/
+*.joblib
