@@ -1,12 +1,7 @@
-ml_training/advanced_models/artifacts/random_forest/model.joblib
-
 # Large files and Cache
 *.pkl
 __pycache__/
 *.pyc
 
-# Generated files and results
-*.png
-*.jpg
-results/
-*.joblib
+# Output Directory (Generated files, results, models, images)
+outputs/

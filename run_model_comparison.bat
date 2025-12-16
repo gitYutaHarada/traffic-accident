@@ -19,6 +19,6 @@ python scripts/model_comparison/compare_three_models.py
 echo.
 echo ========================================
 echo 完了しました!
-echo 結果は results/model_comparison に保存されました
+echo 結果は outputs/results/model_comparison に保存されました
 echo ========================================
 pause

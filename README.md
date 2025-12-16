@@ -32,7 +32,7 @@ traffic-accident/
 │       ├── lightgbm_weighted_optimization.py  # 🎯 LightGBMモデル (推奨)
 │       └── day_of_month_eda.py     # 日別事故傾向分析
 │
-├── results/
+├── outputs/results/
 │   ├── experiments/                # 実験結果レポート
 │   │   ├── categorical_datetime_experiment.md
 │   │   └── day_of_month_analysis.md
@@ -90,10 +90,10 @@ python scripts/analysis/lightgbm_weighted_optimization.py
 
 ## 🔬 実験結果
 
-詳細は `results/experiments/` を参照:
+詳細は `outputs/results/experiments/` を参照:
 
-- **カテゴリカル変数・日時分解**: [categorical_datetime_experiment.md](results/experiments/categorical_datetime_experiment.md)
-- **日別事故傾向分析**: [day_of_month_analysis.md](results/experiments/day_of_month_analysis.md)
+- **カテゴリカル変数・日時分解**: [categorical_datetime_experiment.md](outputs/results/experiments/categorical_datetime_experiment.md)
+- **日別事故傾向分析**: [day_of_month_analysis.md](outputs/results/experiments/day_of_month_analysis.md)
 
 ## 🛠️ 技術スタック
 
