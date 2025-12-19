@@ -1,14 +1,16 @@
 """
-2段階モデル 最終パイプライン
-============================
-Implementation Plan v18
-
+2段階モデル + DAE特徴量統合パイプライン
+========================================
 Stage 1: LightGBM + 1:2 Under-sampling + 3-Seed Averaging
-Stage 2: High Complexity + Strong Regularization
+Stage 2: LightGBM + Focal Loss + DAE特徴量
 
-特徴エンジニアリング:
-- prob_stage1 (OOF予測値を使用、リーク防止)
-- Categorical Interaction Features (文字列結合)
+DAE (Denoising Autoencoder) による特徴量抽出:
+- CVの各Fold内でDAEを学習し、ボトルネック特徴量 (128次元) を抽出
+- リーク防止: DAEは訓練データのみで学習し、検証/テストデータには変換のみ適用
+
+注意:
+- Focal Loss使用時の予測値は、実際のイベント発生確率とは乖離します。
+  ビジネスで使用する場合は「スコア」として扱うか、Isotonic Regression等でキャリブレーションを行ってください。
 """
 
 import pandas as pd
@@ -21,6 +23,9 @@ from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_sco
 import lightgbm as lgb
 from scipy.special import expit
 import warnings
+
+# DAE Feature Extractor (local import)
+from dae_feature_extractor import DAEFeatureExtractor
 
 warnings.filterwarnings('ignore')
 
@@ -46,28 +51,27 @@ def get_focal_loss_lgb(alpha: float = 0.75, gamma: float = 1.0):
         """
         # シグモイド変換
         p = expit(preds)
-        p = np.clip(p, 1e-15, 1 - 1e-15)  # 数値安定性のためクリップ
+        p = np.clip(p, 1e-15, 1 - 1e-15)
         
         # p_t: 正解クラスの確率
-        # y=1 の場合 p_t = p, y=0 の場合 p_t = 1-p
         p_t = y_true * p + (1 - y_true) * (1 - p)
         
         # alpha_t: クラスごとの重み
-        # y=1 の場合 alpha, y=0 の場合 1-alpha
         alpha_t = y_true * alpha + (1 - y_true) * (1 - alpha)
         
         # Focal weight: (1 - p_t)^gamma
         focal_weight = (1 - p_t) ** gamma
         
-        # 簡略化した勾配計算
-        # grad = alpha_t * focal_weight * (p - y_true)
-        # これはクロスエントロピーの勾配 (p - y) に focal_weight と alpha_t を掛けたもの
+        # 勾配
         grad = alpha_t * focal_weight * (p - y_true)
         
         # ヘッセ行列（近似）
-        # 標準的なログロスのヘッセ行列に focal_weight と alpha_t を掛ける
+        # 注意: 厳密なFocal Lossの2階微分はより複雑な項を含みますが、
+        # 数値安定性のため、grad * (1 - 2*p) の項を無視した近似を使用。
+        # focal_weightは定数として扱っています（微分の連鎖律に含まれていない）。
+        # この近似は実用上多くのケースで機能します。
+        # 学習が不安定な場合は scale_pos_weight を使用した重み付けLogLossと比較検討してください。
         hess = alpha_t * focal_weight * p * (1 - p)
-        # 数値安定性のため、ヘッセ行列に最小値を設定
         hess = np.maximum(hess, 1e-7)
         
         return grad, hess
@@ -75,9 +79,8 @@ def get_focal_loss_lgb(alpha: float = 0.75, gamma: float = 1.0):
     return focal_loss_lgb
 
 
-
-class TwoStageFinalPipeline:
-    """2段階モデル最終パイプライン"""
+class TwoStageDAEPipeline:
+    """2段階モデル + DAE特徴量統合パイプライン"""
     
     def __init__(
         self,
@@ -85,14 +88,22 @@ class TwoStageFinalPipeline:
         target_col: str = "死者数",
         n_folds: int = 5,
         random_state: int = 42,
-        stage1_recall_target: float = 0.99,
-        undersample_ratio: float = 2.0,  # 1:2
+        stage1_recall_target: float = 0.95,
+        undersample_ratio: float = 2.0,
         n_seeds: int = 3,
         top_k_interactions: int = 5,
-        test_size: float = 0.2,  # テストセット比率
-        # Optuna最適化パラメータ (optuna_focal_loss_v2)
+        test_size: float = 0.2,
+        # Optuna最適化パラメータ
         focal_alpha: float = 0.6321,
         focal_gamma: float = 1.1495,
+        # DAEパラメータ
+        dae_bottleneck_dim: int = 128,
+        dae_hidden_dim: int = 768,    # 高速化: 1500->768
+        dae_epochs: int = 15,         # 高速化: 50->15
+        dae_swap_noise: float = 0.15,
+        dae_batch_size: int = 32768,  # GPU最適化 (RTX 5080用)
+        # オプション
+        use_prob_stage1: bool = True,
     ):
         self.data_path = data_path
         self.target_col = target_col
@@ -106,26 +117,54 @@ class TwoStageFinalPipeline:
         self.focal_alpha = focal_alpha
         self.focal_gamma = focal_gamma
         
-        self.output_dir = "results/two_stage_model/final_pipeline"
+        # DAE parameters
+        self.dae_bottleneck_dim = dae_bottleneck_dim
+        self.dae_hidden_dim = dae_hidden_dim
+        self.dae_epochs = dae_epochs
+        self.dae_swap_noise = dae_swap_noise
+        self.dae_batch_size = dae_batch_size
+        self.use_prob_stage1 = use_prob_stage1
+        
+        self.output_dir = "results/two_stage_model/dae_pipeline"
         os.makedirs(self.output_dir, exist_ok=True)
         
+        # Storage for models
+        self.stage1_models = []
+        self.stage2_models = []
+        self.dae_models = []
+        
         print("=" * 60)
-        print("2段階モデル 最終パイプライン (Optuna最適化版)")
+        print("2段階モデル + DAE特徴量パイプライン")
         print(f"Stage 1: 1:{int(self.undersample_ratio)} Under-sampling, Recall {self.stage1_recall_target:.0%}")
+        print(f"📝 Stage 1予測は Logits で保持し、Seed間で平均化してから Sigmoid 適用")
         print(f"Focal Loss: Alpha={self.focal_alpha:.4f}, Gamma={self.focal_gamma:.4f}")
+        print(f"DAE: Bottleneck={self.dae_bottleneck_dim}, Epochs={self.dae_epochs}, Batch={self.dae_batch_size}")
+        print(f"use_prob_stage1: {self.use_prob_stage1}")
         print(f"Test Set: {self.test_size:.0%}")
         print("=" * 60)
     
     def load_data(self):
         """データ読み込みとTrain/Test分割"""
         print("\n📂 データ読み込み中...")
-        df = pd.read_csv(self.data_path)
-        y_all = df[self.target_col].values
-        X_all = df.drop(columns=[self.target_col])
+        self.df = pd.read_csv(self.data_path)
+        
+        y_all = self.df[self.target_col].values
+        X_all = self.df.drop(columns=[self.target_col])
         
         if '発生日時' in X_all.columns:
             X_all = X_all.drop(columns=['発生日時'])
         
+        # Train/Test分割 (層化抽出)
+        self.X, self.X_test, self.y, self.y_test = train_test_split(
+            X_all, y_all, test_size=self.test_size, 
+            random_state=self.random_state, stratify=y_all
+        )
+        
+        print(f"\n📊 データ分割 (Train: {1-self.test_size:.0%} / Test: {self.test_size:.0%})")
+        print(f"   Train: 正例 {self.y.sum():,} / {len(self.y):,}")
+        print(f"   Test:  正例 {self.y_test.sum():,} / {len(self.y_test):,}")
+        
+        # カテゴリ変数の特定
         known_categoricals = [
             '都道府県コード', '市区町村コード', '警察署等コード',
             '昼夜', '天候', '地形', '路面状態', '道路形状', '信号機',
@@ -135,45 +174,24 @@ class TwoStageFinalPipeline:
         ]
         
         self.categorical_cols = []
-        for col in X_all.columns:
-            if col in known_categoricals or X_all[col].dtype == 'object':
+        self.numeric_cols = []
+        
+        for col in self.X.columns:
+            if col in known_categoricals or self.X[col].dtype == 'object':
                 self.categorical_cols.append(col)
-                X_all[col] = X_all[col].astype('category')
+                self.X[col] = self.X[col].astype('category')
+                self.X_test[col] = self.X_test[col].astype('category')
             else:
-                X_all[col] = X_all[col].astype(np.float32)
+                self.numeric_cols.append(col)
+                self.X[col] = self.X[col].astype(np.float32)
+                self.X_test[col] = self.X_test[col].astype(np.float32)
         
-        self.feature_names = list(X_all.columns)
-        
-        # Train/Test分割
-        print(f"\n📊 データ分割 (Train: {1-self.test_size:.0%} / Test: {self.test_size:.0%})")
-        self.X, self.X_test, self.y, self.y_test = train_test_split(
-            X_all, y_all,
-            test_size=self.test_size,
-            random_state=self.random_state,
-            stratify=y_all
-        )
-        self.X = self.X.reset_index(drop=True)
-        self.X_test = self.X_test.reset_index(drop=True)
-        
-        print(f"   Train: 正例 {self.y.sum():,} / {len(self.y):,}")
-        print(f"   Test:  正例 {self.y_test.sum():,} / {len(self.y_test):,}")
+        self.feature_names = list(self.X.columns)
         gc.collect()
-
-    
-    def undersample(self, X, y, seed):
-        """負例をアンダーサンプリング"""
-        pos_idx = np.where(y == 1)[0]
-        neg_idx = np.where(y == 0)[0]
-        n_neg_sample = int(len(pos_idx) * self.undersample_ratio)
-        np.random.seed(seed)
-        sampled_neg_idx = np.random.choice(neg_idx, size=min(n_neg_sample, len(neg_idx)), replace=False)
-        sampled_idx = np.concatenate([pos_idx, sampled_neg_idx])
-        np.random.shuffle(sampled_idx)
-        return X.iloc[sampled_idx], y[sampled_idx]
     
     def train_stage1(self):
-        """Stage 1: OOF学習 + Feature Importance取得"""
-        print("\n🌿 Stage 1: LightGBM + Under-sampling (1:2) + 3-Seed Averaging")
+        """Stage 1: LightGBM + Under-sampling + Multi-Seed"""
+        print(f"\n🌿 Stage 1: LightGBM + Under-sampling (1:{int(self.undersample_ratio)}) + {self.n_seeds}-Seed Averaging")
         
         skf = StratifiedKFold(n_splits=self.n_folds, shuffle=True, random_state=self.random_state)
         self.oof_proba_stage1 = np.zeros(len(self.y))
@@ -188,57 +206,80 @@ class TwoStageFinalPipeline:
             'max_depth': 8,
             'reg_alpha': 0.1,
             'reg_lambda': 0.1,
+            'is_unbalance': False,
             'n_estimators': 1000,
             'learning_rate': 0.05,
             'n_jobs': -1
         }
         
-        self.stage1_models = []
-        
         for fold, (train_idx, val_idx) in enumerate(skf.split(self.X, self.y)):
             print(f"   Fold {fold+1}/{self.n_folds}...")
             X_train_full = self.X.iloc[train_idx]
-            y_train_full = self.y[train_idx]
             X_val = self.X.iloc[val_idx]
+            y_train_full = self.y[train_idx]
             y_val = self.y[val_idx]
             
-            fold_proba = np.zeros(len(val_idx))
             fold_models = []
+            fold_logits = np.zeros(len(val_idx))  # 確率ではなくLogitsで平均化
             
-            for seed_offset in range(self.n_seeds):
-                seed = self.random_state + fold * 100 + seed_offset
-                X_train_under, y_train_under = self.undersample(X_train_full, y_train_full, seed)
+            for seed in range(self.n_seeds):
+                np.random.seed(self.random_state + seed)
                 
-                model = lgb.LGBMClassifier(**lgb_params, random_state=seed)
+                # Under-sampling
+                pos_idx = np.where(y_train_full == 1)[0]
+                neg_idx = np.where(y_train_full == 0)[0]
+                n_pos = len(pos_idx)
+                n_neg_sample = int(n_pos * self.undersample_ratio)
+                neg_sample_idx = np.random.choice(neg_idx, size=min(n_neg_sample, len(neg_idx)), replace=False)
+                
+                train_idx_sampled = np.concatenate([pos_idx, neg_sample_idx])
+                X_train = X_train_full.iloc[train_idx_sampled]
+                y_train = y_train_full[train_idx_sampled]
+                
+                model = lgb.LGBMClassifier(**lgb_params, random_state=self.random_state + seed)
                 model.fit(
-                    X_train_under, y_train_under,
+                    X_train, y_train,
                     eval_set=[(X_val, y_val)],
                     callbacks=[lgb.early_stopping(50, verbose=False)]
                 )
                 
-                fold_proba += model.predict_proba(X_val)[:, 1] / self.n_seeds
-                feature_importances += model.feature_importances_ / (self.n_folds * self.n_seeds)
+                # Logitsで取得して平均化（極端な予測に対してロバスト）
+                raw_score = model.predict_proba(X_val)[:, 1]
+                # predict_probaは確率を返すので、logit変換してから平均
+                raw_score = np.clip(raw_score, 1e-15, 1 - 1e-15)
+                logits = np.log(raw_score / (1 - raw_score))  # logit変換
+                fold_logits += logits / self.n_seeds
                 fold_models.append(model)
-                
-                del model
-                gc.collect()
+                feature_importances += model.feature_importances_ / (self.n_folds * self.n_seeds)
             
-            self.oof_proba_stage1[val_idx] = fold_proba
+            # Logits平均からSigmoidで確率に変換
+            self.oof_proba_stage1[val_idx] = expit(fold_logits)
+            # Logitsも保存（Stage 2の特徴量として使用）
+            if not hasattr(self, 'oof_logits_stage1'):
+                self.oof_logits_stage1 = np.zeros(len(self.y))
+            self.oof_logits_stage1[val_idx] = fold_logits
             self.stage1_models.append(fold_models)
+            
+            del X_train, X_val
+            gc.collect()
         
         # Feature Importance
         self.feature_importance_df = pd.DataFrame({
             'feature': self.feature_names, 'importance': feature_importances
         }).sort_values('importance', ascending=False)
-        self.top_features = self.feature_importance_df.head(self.top_k_interactions)['feature'].tolist()
+        self.top_features = self.feature_importance_df.head(10)['feature'].tolist()
         
-        # OOF精度
+        # OOF評価
         oof_pred = (self.oof_proba_stage1 >= 0.5).astype(int)
-        print(f"   OOF (閾値0.5): Prec={precision_score(self.y, oof_pred):.4f}, Rec={recall_score(self.y, oof_pred):.4f}, AUC={roc_auc_score(self.y, self.oof_proba_stage1):.4f}")
+        oof_auc = roc_auc_score(self.y, self.oof_proba_stage1)
+        print(f"   OOF (閾値0.5): Prec={precision_score(self.y, oof_pred):.4f}, "
+              f"Rec={recall_score(self.y, oof_pred):.4f}, AUC={oof_auc:.4f}")
     
     def find_recall_threshold(self):
-        """Recall目標閾値探索"""
-        for thresh in np.arange(0.50, 0.001, -0.005):
+        """Recall目標を達成する閾値を探索"""
+        # 0.5から下げていき、Recall目標を満たす最大の閾値を見つける
+        # (以前の実装は0.001から上げていたため、最小の閾値で止まってしまっていた)
+        for thresh in np.arange(0.5, 0.0, -0.001):
             y_pred = (self.oof_proba_stage1 >= thresh).astype(int)
             recall = recall_score(self.y, y_pred)
             if recall >= self.stage1_recall_target:
@@ -249,45 +290,36 @@ class TwoStageFinalPipeline:
         
         y_pred_final = (self.oof_proba_stage1 >= self.threshold_stage1).astype(int)
         self.stage1_recall = recall_score(self.y, y_pred_final)
-        self.stage1_precision = precision_score(self.y, y_pred_final)
         n_candidates = y_pred_final.sum()
         self.filter_rate = 1 - (n_candidates / len(self.y))
+        n_filtered = len(self.y) - n_candidates
         
         print(f"   閾値: {self.threshold_stage1:.4f}, Recall: {self.stage1_recall:.4f}")
-        print(f"   フィルタリング率: {self.filter_rate*100:.2f}% 除外, 候補: {n_candidates:,}")
+        print(f"   [Result] フィルタリング: {n_filtered:,} 件除外 ({self.filter_rate:.2%})")
+        print(f"   [Result] 残存データ: {n_candidates:,} 件 (Stage 2 候補)")
+        print(f"   [Result] 正例残存: {self.y[self.oof_proba_stage1 >= self.threshold_stage1].sum():,} / {self.y.sum():,}")
         
         self.stage2_mask = self.oof_proba_stage1 >= self.threshold_stage1
-        
-        # OOF結果保存（XGBoostとの相関分析用）
-        oof_df = pd.DataFrame({
-            'y_true': self.y,
-            'oof_proba': self.oof_proba_stage1
-        })
-        oof_path = "results/two_stage_model/lightgbm_stage1_oof.csv"
-        os.makedirs(os.path.dirname(oof_path), exist_ok=True)
-        oof_df.to_csv(oof_path, index=False)
-        print(f"   💾 OOF結果保存: {oof_path}")
     
-    def generate_stage2_features(self, X_subset, prob_stage1_subset, fit_categories=True):
+    def generate_stage2_features(self, X_subset, logits_stage1_subset, fit_categories=True):
         """
-        Stage 2用特徴量生成
+        Stage 2用特徴量生成 (DAE特徴量なし、基本特徴量のみ)
         
         Args:
-            X_subset: 入力特徴量DataFrame
-            prob_stage1_subset: Stage 1の予測確率
-            fit_categories: Trueの場合、カテゴリマッピングを学習して保存。
-                           Falseの場合、保存済みのマッピングを適用（テスト時用）。
+            logits_stage1_subset: Stage 1のLogits値（確率ではなく生スコア）
+                                   Logitsは情報の解像度が高く、学習しやすい
         """
         X_out = X_subset.copy()
         
-        # (a) prob_stage1 追加
-        X_out['prob_stage1'] = prob_stage1_subset
+        # (a) logits_stage1 追加 (オプション)
+        # 確率(0-1)ではなくLogitsを使用することで端の情報を保持
+        if self.use_prob_stage1:
+            X_out['logits_stage1'] = logits_stage1_subset
         
         # (b) Categorical Interaction Features
         top_cat_features = [f for f in self.top_features if f in self.categorical_cols]
         
         if fit_categories:
-            # 学習時: カテゴリマッピングを保存
             self.interaction_categories = {}
         
         for i, f1 in enumerate(top_cat_features[:self.top_k_interactions]):
@@ -297,149 +329,159 @@ class TwoStageFinalPipeline:
                 
                 if fit_categories:
                     # 学習時: カテゴリを作成して保存
-                    cat_type = pd.CategoricalDtype(categories=interaction_values.unique())
+                    cat_type = pd.CategoricalDtype(categories=list(interaction_values.unique()) + ['__UNKNOWN__'])
                     self.interaction_categories[name] = cat_type
                     X_out[name] = pd.Categorical(interaction_values, dtype=cat_type)
                 else:
-                    # テスト時: 保存済みカテゴリを使用（未知のカテゴリはNaNになる）
+                    # テスト時: 保存済みカテゴリを使用、未知の組み合わせは __UNKNOWN__ にマップ
                     if hasattr(self, 'interaction_categories') and name in self.interaction_categories:
+                        known_cats = set(self.interaction_categories[name].categories)
+                        # 未知の組み合わせを __UNKNOWN__ に置換
+                        interaction_values = interaction_values.apply(
+                            lambda x: x if x in known_cats else '__UNKNOWN__'
+                        )
                         X_out[name] = pd.Categorical(interaction_values, dtype=self.interaction_categories[name])
                     else:
                         X_out[name] = interaction_values.astype('category')
         
         return X_out
     
-    def get_stage2_data(self):
+    def train_stage2_with_dae(self):
         """
-        Optuna等の外部スクリプト用: Stage 2データを生成して返す
-        
-        Returns:
-            X_s2: Stage 2用の特徴量DataFrame
-            y_s2: Stage 2用のラベルarray
+        Stage 2: DAE特徴量を使用したLightGBM学習
+        CVの各Fold内でDAEを学習し、特徴量を追加
         """
-        self.load_data()
-        self.train_stage1()
-        self.find_recall_threshold()
-        
-        X_s2 = self.generate_stage2_features(
-            self.X[self.stage2_mask].copy(),
-            self.oof_proba_stage1[self.stage2_mask]
-        )
-        y_s2 = self.y[self.stage2_mask]
-        
-        print(f"\n📦 Stage 2用データ生成完了:")
-        print(f"   データ数: {len(y_s2):,} (Pos: {y_s2.sum():,}, Neg: {len(y_s2)-y_s2.sum():,})")
-        
-        return X_s2, y_s2
-    
-    def train_stage2(self):
-        """
-        Stage 2: Cross Validationによる学習と評価
-        (学習データに対する過学習を防ぎ、真の汎化性能を測定する)
-        """
-        print("\n🌿 Stage 2: High Complexity + Strong Regularization (5-Fold CV)")
+        print("\n🌿 Stage 2: LightGBM + DAE特徴量 (5-Fold CV)")
         print(f"   Focal Loss: Alpha={self.focal_alpha:.4f}, Gamma={self.focal_gamma:.4f}")
+        print(f"   DAE: Bottleneck={self.dae_bottleneck_dim}, Epochs={self.dae_epochs}")
         
-        # Stage 2用の全データ
-        X_s2_full = self.generate_stage2_features(
+        # Stage 2用の全データ (基本特徴量のみ) - Logitsを使用
+        X_s2_base = self.generate_stage2_features(
             self.X[self.stage2_mask].copy(),
-            self.oof_proba_stage1[self.stage2_mask]
+            self.oof_logits_stage1[self.stage2_mask],  # 確率ではなくLogitsを使用
+            fit_categories=True
         ).reset_index(drop=True)
         
         y_s2_full = self.y[self.stage2_mask]
         
         n_pos, n_neg = y_s2_full.sum(), len(y_s2_full) - y_s2_full.sum()
         print(f"   Stage 2 データ: {len(y_s2_full):,} (Pos: {n_pos:,}, Neg: {n_neg:,})")
-        print(f"   Top Features for Interaction: {self.top_features}")
+        print(f"   Top Features for Interaction: {self.top_features[:5]}")
         
-        # Stage 2のOOF予測値を格納する配列
+        # OOF予測値を格納
         self.oof_proba_stage2 = np.zeros(len(y_s2_full))
         self.stage2_models = []
+        self.dae_models = []
         
         # CV設定
         skf = StratifiedKFold(n_splits=self.n_folds, shuffle=True, random_state=self.random_state)
         
-        # ハイパーパラメータ (Optuna最適化 - optuna_focal_loss_v2)
+        # LightGBMパラメータ (Optuna最適化済み)
         focal_loss_fn = get_focal_loss_lgb(alpha=self.focal_alpha, gamma=self.focal_gamma)
         lgb_params = {
-            'objective': focal_loss_fn,  # カスタムFocal Loss (動的パラメータ)
+            'objective': focal_loss_fn,
             'metric': 'auc',
             'boosting_type': 'gbdt',
             'verbosity': -1,
-            'num_leaves': 127,        # Optuna最適化
-            'max_depth': -1,          # num_leaves=127を活かすため制限なし
-            'min_child_samples': 44,  # Optuna最適化
-            'reg_alpha': 2.3897,      # Optuna最適化
-            'reg_lambda': 2.2842,     # Optuna最適化
-            'colsample_bytree': 0.8646,  # Optuna最適化
-            'subsample': 0.6328,      # Optuna最適化
-            'learning_rate': 0.0477,  # Optuna最適化
+            'num_leaves': 127,
+            'max_depth': -1,
+            'min_child_samples': 44,
+            'reg_alpha': 2.3897,
+            'reg_lambda': 2.2842,
+            'colsample_bytree': 0.8646,
+            'subsample': 0.6328,
+            'learning_rate': 0.0477,
             'is_unbalance': False,
             'n_estimators': 1000,
             'n_jobs': -1
         }
-
         
-        for fold, (train_idx, val_idx) in enumerate(skf.split(X_s2_full, y_s2_full)):
+        for fold, (train_idx, val_idx) in enumerate(skf.split(X_s2_base, y_s2_full)):
             print(f"   Fold {fold+1}/{self.n_folds}...")
-            X_train, y_train = X_s2_full.iloc[train_idx], y_s2_full[train_idx]
-            X_val, y_val = X_s2_full.iloc[val_idx], y_s2_full[val_idx]
             
-            model = lgb.LGBMClassifier(**lgb_params, random_state=self.random_state + fold)
+            X_train_base = X_s2_base.iloc[train_idx].reset_index(drop=True)
+            X_val_base = X_s2_base.iloc[val_idx].reset_index(drop=True)
+            y_train = y_s2_full[train_idx]
+            y_val = y_s2_full[val_idx]
             
-            # Early Stoppingを利用して過学習抑制
+            # === DAE学習 & 特徴量抽出 ===
+            print(f"      📦 DAE学習中...")
+            dae = DAEFeatureExtractor(
+                numeric_cols=self.numeric_cols + (['logits_stage1'] if self.use_prob_stage1 else []),
+                cat_cols=self.categorical_cols,
+                bottleneck_dim=self.dae_bottleneck_dim,
+                hidden_dim=self.dae_hidden_dim,
+                epochs=self.dae_epochs,
+                swap_noise_rate=self.dae_swap_noise,
+                batch_size=self.dae_batch_size,
+                verbose=True,  # ログを表示してGPU確認
+                n_workers=4    # 高速化のためにワーカーを使用
+            )
+            
+            # デバイス確認用ログ
+            print(f"      🖥️  Device being used: {dae.device}")
+            
+            # DAEは訓練データのみで学習
+            dae.fit(X_train_base)
+            
+            # 訓練・検証データの両方から特徴量抽出
+            dae_train_features = dae.transform(X_train_base)
+            dae_val_features = dae.transform(X_val_base)
+            
+            # DAE特徴量をDataFrameに変換
+            dae_cols = [f'dae_{i}' for i in range(self.dae_bottleneck_dim)]
+            dae_train_df = pd.DataFrame(dae_train_features, columns=dae_cols)
+            dae_val_df = pd.DataFrame(dae_val_features, columns=dae_cols)
+            
+            # 基本特徴量とDAE特徴量を結合
+            X_train_full = pd.concat([X_train_base.reset_index(drop=True), dae_train_df], axis=1)
+            X_val_full = pd.concat([X_val_base.reset_index(drop=True), dae_val_df], axis=1)
+            
+            # === LightGBM学習 ===
+            model = lgb.LGBMClassifier(**lgb_params, random_state=self.random_state)
             model.fit(
-                X_train, y_train,
-                eval_set=[(X_val, y_val)],
+                X_train_full, y_train,
+                eval_set=[(X_val_full, y_val)],
                 callbacks=[lgb.early_stopping(50, verbose=False)]
             )
             
-            # Focal Loss使用時はraw_score=Trueでlogitを取得し、シグモイド変換
-            y_pred_raw = model.predict(X_val, raw_score=True)
-            y_pred_proba = 1.0 / (1.0 + np.exp(-y_pred_raw))
+            # OOF予測 (raw_scoreからシグモイド変換)
+            raw_score = model.predict(X_val_full, raw_score=True)
+            proba = 1.0 / (1.0 + np.exp(-raw_score))
+            self.oof_proba_stage2[val_idx] = proba
             
-            self.oof_proba_stage2[val_idx] = y_pred_proba
+            # モデル保存
             self.stage2_models.append(model)
+            self.dae_models.append(dae)
             
-            del model
+            del X_train_full, X_val_full, dae_train_features, dae_val_features
             gc.collect()
         
-        # OOF精度（Stage 2のみ）
+        # Stage 2 OOF評価
         oof_auc = roc_auc_score(y_s2_full, self.oof_proba_stage2)
         print(f"   Stage 2 OOF AUC: {oof_auc:.4f}")
-        
-        self.stage2_feature_names = list(X_s2_full.columns)
     
     def evaluate(self):
-        """最終評価（CVのOOF予測値を用いた公平な評価）"""
+        """最終評価 (CV OOF)"""
         print("\n📈 最終評価 (Cross Validation OOF)")
         
-        # Stage 2のOOF予測確率を使用（train_stage2で生成済み）
-        y_prob_s2 = self.oof_proba_stage2
+        y_s2 = self.y[self.stage2_mask]
         
-        # Stage 2 のスコア分布を表示
-        print("\n   📊 予測スコア分布 (Stage 2 OOF):")
-        prob_series = pd.Series(y_prob_s2)
-        print(f"      mean={prob_series.mean():.4f}, std={prob_series.std():.4f}")
-        print(f"      min={prob_series.min():.4f}, 25%={prob_series.quantile(0.25):.4f}, 50%={prob_series.quantile(0.5):.4f}, 75%={prob_series.quantile(0.75):.4f}, max={prob_series.max():.4f}")
+        # 最終予測確率
+        self.final_proba = np.zeros(len(self.y))
+        self.final_proba[self.stage2_mask] = self.oof_proba_stage2
         
-        # Stage 2対象外のデータは確率0として全体の配列を作成
-        final_proba = np.zeros(len(self.y))
-        final_proba[self.stage2_mask] = y_prob_s2
+        # 動的閾値評価
+        precisions, recalls, thresholds = precision_recall_curve(y_s2, self.oof_proba_stage2)
         
-        # 動的閾値探索: Stage 2対象データのみで計算
-        y_s2_true = self.y[self.stage2_mask]
-        precisions, recalls, thresholds = precision_recall_curve(y_s2_true, y_prob_s2)
-        
-        target_recalls = [0.99, 0.98, 0.95]
         self.dynamic_results = {}
+        target_recalls = [0.99, 0.98, 0.95]
         
         print("\n   📊 動的閾値評価:")
         for target_recall in target_recalls:
-            # recalls は降順なので、target_recall 以上の最初のインデックスを探す
             idx = np.where(recalls >= target_recall)[0]
             if len(idx) > 0:
-                idx = idx[-1]  # recallsは降順なので最後のインデックス
+                idx = idx[-1]
                 if idx < len(thresholds):
                     best_thresh = thresholds[idx]
                     best_prec = precisions[idx]
@@ -456,21 +498,20 @@ class TwoStageFinalPipeline:
             }
             print(f"      Recall ~{target_recall:.0%}: 閾値={best_thresh:.4f}, Precision={best_prec:.4f}")
         
-        # 固定閾値0.5での評価（従来との比較用）
-        y_pred = (final_proba >= 0.5).astype(int)
+        # 固定閾値評価
+        y_pred = (self.final_proba >= 0.5).astype(int)
         
         self.final_precision = precision_score(self.y, y_pred) if y_pred.sum() > 0 else 0
         self.final_recall = recall_score(self.y, y_pred)
         self.final_f1 = f1_score(self.y, y_pred)
-        self.final_auc = roc_auc_score(self.y, final_proba)
-        self.final_proba = final_proba  # レポート用に保持
+        self.final_auc = roc_auc_score(self.y, self.final_proba)
         
-        # Baseline (Stage 1 単独 閾値0.5)
+        print(f"\n   [閾値0.5] Precision: {self.final_precision:.4f}, Recall: {self.final_recall:.4f}, F1: {self.final_f1:.4f}")
+        
+        # Baseline (Stage 1)
         y_pred_bl = (self.oof_proba_stage1 >= 0.5).astype(int)
         self.baseline_precision = precision_score(self.y, y_pred_bl)
         self.baseline_recall = recall_score(self.y, y_pred_bl)
-        
-        print(f"\n   [閾値0.5] Precision: {self.final_precision:.4f}, Recall: {self.final_recall:.4f}, F1: {self.final_f1:.4f}")
         print(f"   [ベース(Stage1)] Precision: {self.baseline_precision:.4f}, Recall: {self.baseline_recall:.4f}")
         
         improvement = (self.final_precision - self.baseline_precision) / self.baseline_precision * 100 if self.baseline_precision > 0 else 0
@@ -487,25 +528,26 @@ class TwoStageFinalPipeline:
             'baseline_precision': self.baseline_precision,
             'baseline_recall': self.baseline_recall,
             'precision_improvement_pct': improvement,
+            'dynamic_recall_99_precision': self.dynamic_results.get(0.99, {}).get('precision', 0),
             'dynamic_recall_98_precision': self.dynamic_results.get(0.98, {}).get('precision', 0),
-            'dynamic_recall_98_threshold': self.dynamic_results.get(0.98, {}).get('threshold', 0),
         }
     
     def evaluate_test_set(self):
-        """
-        テストセットでの最終評価
-        学習に使用していない完全に独立したデータで汎化性能を確認する
-        """
+        """テストセットでの最終評価"""
         print("\n📈 テストセット評価 (Hold-Out)")
         
-        # Stage 1: 全Foldのモデルでアンサンブル予測
-        test_proba_stage1 = np.zeros(len(self.y_test))
+        # Stage 1: アンサンブル予測 (Logits平均)
+        test_logits_stage1 = np.zeros(len(self.y_test))
         for fold_models in self.stage1_models:
             for model in fold_models:
-                test_proba_stage1 += model.predict_proba(self.X_test)[:, 1]
-        test_proba_stage1 /= (self.n_folds * self.n_seeds)
+                proba = model.predict_proba(self.X_test)[:, 1]
+                proba = np.clip(proba, 1e-15, 1 - 1e-15)
+                logits = np.log(proba / (1 - proba))
+                test_logits_stage1 += logits
+        test_logits_stage1 /= (self.n_folds * self.n_seeds)
+        test_proba_stage1 = expit(test_logits_stage1)
         
-        # Stage 1閾値を適用してフィルタリング
+        # Stage 1閾値適用
         test_stage2_mask = test_proba_stage1 >= self.threshold_stage1
         n_candidates = test_stage2_mask.sum()
         n_pos_in_candidates = self.y_test[test_stage2_mask].sum()
@@ -518,21 +560,30 @@ class TwoStageFinalPipeline:
             self.test_results = {'error': 'No candidates after Stage 1'}
             return self.test_results
         
-        # Stage 2用の特徴量生成 (テスト時は保存済みカテゴリを使用)
-        X_test_s2 = self.generate_stage2_features(
+        # Stage 2用基本特徴量 (Logitsを使用)
+        X_test_s2_base = self.generate_stage2_features(
             self.X_test[test_stage2_mask].copy(),
-            test_proba_stage1[test_stage2_mask],
-            fit_categories=False  # テスト時は学習時のカテゴリマッピングを使用
+            test_logits_stage1[test_stage2_mask],  # 確率ではなくLogitsを使用
+            fit_categories=False
         )
         y_test_s2 = self.y_test[test_stage2_mask]
         
-        # Stage 2: 全Foldのモデルでアンサンブル予測 (Focal Loss使用時はraw_score)
+        # Stage 2: 各FoldのDAE+LightGBMでアンサンブル予測
         test_proba_stage2 = np.zeros(len(y_test_s2))
-        for model in self.stage2_models:
-            raw_score = model.predict(X_test_s2, raw_score=True)
+        
+        for fold, (dae, model) in enumerate(zip(self.dae_models, self.stage2_models)):
+            # DAE特徴量抽出
+            dae_features = dae.transform(X_test_s2_base)
+            dae_cols = [f'dae_{i}' for i in range(self.dae_bottleneck_dim)]
+            dae_df = pd.DataFrame(dae_features, columns=dae_cols)
+            
+            # 結合
+            X_test_full = pd.concat([X_test_s2_base.reset_index(drop=True), dae_df], axis=1)
+            
+            # 予測
+            raw_score = model.predict(X_test_full, raw_score=True)
             proba = 1.0 / (1.0 + np.exp(-raw_score))
-            test_proba_stage2 += proba
-        test_proba_stage2 /= self.n_folds
+            test_proba_stage2 += proba / self.n_folds
         
         # 動的閾値評価
         precisions, recalls, thresholds = precision_recall_curve(y_test_s2, test_proba_stage2)
@@ -561,7 +612,7 @@ class TwoStageFinalPipeline:
             }
             print(f"      Recall ~{target_recall:.0%}: 閾値={best_thresh:.4f}, Precision={best_prec:.4f}")
         
-        # 固定閾値0.5での評価
+        # 固定閾値評価
         final_test_proba = np.zeros(len(self.y_test))
         final_test_proba[test_stage2_mask] = test_proba_stage2
         y_test_pred = (final_test_proba >= 0.5).astype(int)
@@ -590,27 +641,21 @@ class TwoStageFinalPipeline:
         """実験レポートをMarkdownで出力"""
         report_path = os.path.join(self.output_dir, "experiment_report.md")
         
-        report_content = f"""# Focal Loss 実験レポート (Optuna最適化版)
+        report_content = f"""# DAE特徴量統合実験レポート
 
 **実行日時**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 **実行時間**: {elapsed_sec:.1f}秒
 
-## パラメータ設定 (Optuna最適化)
+## パラメータ設定
 
 | パラメータ | 値 |
 |-----------|----| 
 | Focal Alpha | {self.focal_alpha:.4f} |
 | Focal Gamma | {self.focal_gamma:.4f} |
-| num_leaves | 127 |
-| max_depth | 6 |
-| min_child_samples | 44 |
-| reg_alpha | 2.3897 |
-| reg_lambda | 2.2842 |
-| colsample_bytree | 0.8646 |
-| subsample | 0.6328 |
-| learning_rate | 0.0477 |
+| DAE Bottleneck | {self.dae_bottleneck_dim} |
+| DAE Epochs | {self.dae_epochs} |
+| DAE Swap Noise | {self.dae_swap_noise:.2f} |
 | Stage 1 Recall Target | {self.stage1_recall_target:.0%} |
-| Under-sampling Ratio | 1:{int(self.undersample_ratio)} |
 | Test Set Ratio | {self.test_size:.0%} |
 
 ## 結果サマリ
@@ -620,7 +665,7 @@ class TwoStageFinalPipeline:
 - **Recall**: {results['stage1_recall']:.4f}
 - **フィルタリング率**: {results['filter_rate']*100:.2f}%
 
-### Stage 2 (Focal Loss) - CV OOF評価
+### Stage 2 (Focal Loss + DAE) - CV OOF評価
 
 #### 固定閾値 (0.5) での評価
 | 指標 | 値 |
@@ -631,33 +676,31 @@ class TwoStageFinalPipeline:
 | AUC | {results['final_auc']:.4f} |
 
 #### 動的閾値での評価 (CV OOF)
-| Target Recall | 閾値 | Precision |
-|---------------|------|----------|
-| 99% | {self.dynamic_results.get(0.99, {}).get('threshold', 0):.4f} | {self.dynamic_results.get(0.99, {}).get('precision', 0):.4f} |
-| 98% | {self.dynamic_results.get(0.98, {}).get('threshold', 0):.4f} | {self.dynamic_results.get(0.98, {}).get('precision', 0):.4f} |
-| 95% | {self.dynamic_results.get(0.95, {}).get('threshold', 0):.4f} | {self.dynamic_results.get(0.95, {}).get('precision', 0):.4f} |
+| Target Recall | Precision |
+|---------------|----------|
+| 99% | {results.get('dynamic_recall_99_precision', 0):.4f} |
+| 98% | {results.get('dynamic_recall_98_precision', 0):.4f} |
 
-## Baseline との比較 (CV OOF)
+### テストセット評価 (Hold-Out {self.test_size:.0%})
 
-| 指標 | Baseline (Stage1) | Focal Loss (固定閾値) | 変化 |
-|------|-------------------|----------------------|------|
-| Precision | {results['baseline_precision']:.4f} | {results['final_precision']:.4f} | {results['precision_improvement_pct']:+.2f}% |
-| Recall | {results['baseline_recall']:.4f} | {results['final_recall']:.4f} | - |
+| 指標 | 値 |
+|------|----| 
+| Precision | {results.get('test_precision', 0):.4f} |
+| Recall | {results.get('test_recall', 0):.4f} |
+| F1 | {results.get('test_f1', 0):.4f} |
+| AUC | {results.get('test_auc', 0):.4f} |
 
-## 予測スコア分布
-
-```
-mean={pd.Series(self.final_proba[self.stage2_mask]).mean():.4f}
-std={pd.Series(self.final_proba[self.stage2_mask]).std():.4f}
-min={pd.Series(self.final_proba[self.stage2_mask]).min():.4f}
-max={pd.Series(self.final_proba[self.stage2_mask]).max():.4f}
-```
+#### 動的閾値での評価 (Test Set)
+| Target Recall | Precision |
+|---------------|----------|
+| 99% | {results.get('test_precision_at_recall99', 0):.4f} |
+| 98% | {results.get('test_precision_at_recall98', 0):.4f} |
+| 95% | {results.get('test_precision_at_recall95', 0):.4f} |
 
 ## 考察
 
-- Focal Alpha={self.focal_alpha:.4f} は正例（死亡事故）の重みを調整
-- Focal Gamma={self.focal_gamma:.4f} は難易度に応じた重み付け
-- Optuna最適化により、Recall 99%時のPrecisionを最大化するパラメータを探索
+- DAE特徴量 ({self.dae_bottleneck_dim}次元) により、LightGBMが苦手な非線形関係を捕捉
+- Swap Noise ({self.dae_swap_noise:.0%}) によるノイズ除去効果
 - CV OOF と Test Set の結果が近いほど、汎化性能が高い
 """
         
@@ -672,7 +715,7 @@ max={pd.Series(self.final_proba[self.stage2_mask]).max():.4f}
         self.load_data()
         self.train_stage1()
         self.find_recall_threshold()
-        self.train_stage2()
+        self.train_stage2_with_dae()
         results = self.evaluate()
         
         # テストセット評価
@@ -699,5 +742,5 @@ max={pd.Series(self.final_proba[self.stage2_mask]).max():.4f}
 
 
 if __name__ == "__main__":
-    pipeline = TwoStageFinalPipeline()
+    pipeline = TwoStageDAEPipeline()
     pipeline.run()

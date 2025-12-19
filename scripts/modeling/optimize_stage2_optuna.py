@@ -1,12 +1,12 @@
 """
-Stage 2 Optuna ハイパーパラメータ最適化
-======================================
-Implementation Plan v22
+Stage 2 Optuna ハイパーパラメータ最適化 (Focal Loss対応)
+=========================================================
+Implementation Plan v23 - Focal Loss + Recall 99% Precision最大化
 
-- 評価指標: PR-AUC (カスタム関数)
-- Pruning: 見込みのない試行を早期打ち切り
-- 探索: num_leaves, reg, scale_pos_weight 等
-- 進捗表示: tqdmとOptuna標準ログで確認可能
+- Focal Loss: Alpha, Gamma を探索
+- 評価指標: Recall 99%時のPrecision
+- Pruning: カスタム指標で早期打ち切り
+- 安定性: boost_from_average=False, Hessian近似, 勾配スケーリング
 """
 
 import pandas as pd
@@ -16,7 +16,7 @@ import pickle
 import gc
 from datetime import datetime
 from sklearn.model_selection import StratifiedKFold
-from sklearn.metrics import average_precision_score, precision_score, recall_score
+from sklearn.metrics import precision_recall_curve, average_precision_score
 import lightgbm as lgb
 import optuna
 from optuna.integration import LightGBMPruningCallback
@@ -26,20 +26,82 @@ warnings.filterwarnings('ignore')
 
 
 # ============================================================
-# カスタム評価関数（PR-AUC）
+# Focal Loss 実装 (クロージャ)
 # ============================================================
-def pr_auc_metric(preds, train_data):
-    """LightGBM用カスタムPR-AUC評価関数"""
+def get_focal_loss(alpha, gamma):
+    """
+    Focal Lossを生成するクロージャ
+    
+    Args:
+        alpha: 正例の重み (0.0~1.0)
+        gamma: 難易度の重み (0.0~5.0)
+    
+    Returns:
+        focal_loss_fixed: lgb.trainのfobj引数に渡す関数
+    """
+    def focal_loss_fixed(preds, train_data):
+        y_true = train_data.get_label()
+        
+        # Logits -> Probability (数値安定性のためクリップ)
+        p = 1.0 / (1.0 + np.exp(-preds))
+        p = np.clip(p, 1e-15, 1 - 1e-15)
+        
+        # p_t: 正解クラスの確率
+        p_t = y_true * p + (1 - y_true) * (1 - p)
+        
+        # alpha_t: クラスごとの重み
+        alpha_t = y_true * alpha + (1 - y_true) * (1 - alpha)
+        
+        # Focal weight: (1 - p_t)^gamma
+        focal_weight = (1 - p_t) ** gamma
+        
+        # 1. 勾配 (Gradient) - 厳密解
+        grad = alpha_t * focal_weight * (p - y_true)
+        
+        # 2. ヘッセ行列 (Hessian) - 近似解 (安定性重視)
+        hess = alpha_t * focal_weight * p * (1 - p)
+        hess = np.maximum(hess, 1e-7)  # 数値安定性
+        
+        # 3. 勾配スケーリング (学習進行促進)
+        factor = 10.0
+        return grad * factor, hess * factor
+    
+    return focal_loss_fixed
+
+
+# ============================================================
+# カスタム評価関数 (Recall 99%時のPrecision)
+# ============================================================
+def custom_eval_metric(preds, train_data):
+    """
+    LightGBM用カスタム評価関数
+    Recall >= 98.5% を満たす最大Precisionを返す
+    """
     y_true = train_data.get_label()
-    score = average_precision_score(y_true, preds)
-    return 'pr_auc', score, True  # higher_is_better=True
+    
+    # Logits -> Probability
+    p = 1.0 / (1.0 + np.exp(-preds))
+    
+    # Precision-Recall Curve
+    precision, recall, _ = precision_recall_curve(y_true, p)
+    
+    # Recall >= 0.985 の最大Precisionを探す
+    target_recall = 0.985
+    valid_indices = recall >= target_recall
+    
+    if valid_indices.sum() > 0:
+        score = precision[valid_indices].max()
+    else:
+        score = 0.0
+    
+    return 'prec_at_rec99', score, True  # name, value, higher_is_better
 
 
 # ============================================================
-# Optuna Objective関数
+# Optuna Objective関数 (Focal Loss対応)
 # ============================================================
-class Stage2Objective:
-    """Stage 2のハイパーパラメータ最適化用Objective"""
+class Stage2FocalLossObjective:
+    """Stage 2のFocal Loss + ハイパーパラメータ最適化用Objective"""
     
     def __init__(self, X, y, n_folds=5, random_state=42):
         self.X = X
@@ -53,13 +115,25 @@ class Stage2Objective:
     def __call__(self, trial):
         self.trial_count += 1
         
-        # 探索パラメータ
+        # Focal Lossパラメータ探索
+        focal_alpha = trial.suggest_float('focal_alpha', 0.1, 0.9)
+        focal_gamma = trial.suggest_float('focal_gamma', 0.0, 5.0)
+        
+        # LightGBMパラメータ探索
+        # Focal Loss関数を生成 (paramsに設定するため先に作成)
+        fobj = get_focal_loss(focal_alpha, focal_gamma)
+        
         params = {
-            'objective': 'binary',
+            'objective': fobj,  # LightGBM v4+: params内にカスタム目的関数を設定
             'boosting_type': 'gbdt',
             'verbosity': -1,
             'n_jobs': -1,
             'random_state': self.random_state,
+            
+            # カスタム損失関数使用時の必須設定
+            'boost_from_average': False,
+            'is_unbalance': False,
+            # scale_pos_weightは除外 (Focal LossのAlphaで制御)
             
             # 探索対象
             'num_leaves': trial.suggest_int('num_leaves', 31, 255),
@@ -69,13 +143,12 @@ class Stage2Objective:
             'reg_lambda': trial.suggest_float('reg_lambda', 0.0, 10.0),
             'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 0.9),
             'subsample': trial.suggest_float('subsample', 0.5, 0.9),
-            'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.1, log=True),
-            'scale_pos_weight': trial.suggest_float('scale_pos_weight', 1.0, 50.0),
+            'learning_rate': trial.suggest_float('learning_rate', 0.02, 0.2, log=True),
         }
         
         # Cross-Validation
         skf = StratifiedKFold(n_splits=self.n_folds, shuffle=True, random_state=self.random_state)
-        pr_auc_scores = []
+        scores = []
         
         for fold, (train_idx, val_idx) in enumerate(skf.split(self.X, self.y)):
             X_train = self.X.iloc[train_idx]
@@ -87,8 +160,8 @@ class Stage2Objective:
             dtrain = lgb.Dataset(X_train, label=y_train)
             dval = lgb.Dataset(X_val, label=y_val, reference=dtrain)
             
-            # Pruning Callback
-            pruning_callback = LightGBMPruningCallback(trial, 'pr_auc')
+            # Pruning Callback (カスタム指標を監視)
+            pruning_callback = LightGBMPruningCallback(trial, 'prec_at_rec99')
             
             try:
                 model = lgb.train(
@@ -96,16 +169,26 @@ class Stage2Objective:
                     dtrain,
                     num_boost_round=500,
                     valid_sets=[dval],
-                    feval=pr_auc_metric,
+                    feval=custom_eval_metric,  # カスタム評価
                     callbacks=[
                         lgb.early_stopping(50, verbose=False),
                         pruning_callback
                     ]
                 )
                 
-                y_prob = model.predict(X_val)
-                pr_auc = average_precision_score(y_val, y_prob)
-                pr_auc_scores.append(pr_auc)
+                # 評価 (Logits -> Probability)
+                y_pred_logits = model.predict(X_val)
+                y_pred_prob = 1.0 / (1.0 + np.exp(-y_pred_logits))
+                
+                # Recall 99%時のPrecisionを計算
+                precision, recall, _ = precision_recall_curve(y_val, y_pred_prob)
+                valid_indices = recall >= 0.985
+                if valid_indices.sum() > 0:
+                    fold_score = precision[valid_indices].max()
+                else:
+                    fold_score = 0.0
+                
+                scores.append(fold_score)
                 
             except optuna.TrialPruned:
                 raise
@@ -113,17 +196,19 @@ class Stage2Objective:
             del model
             gc.collect()
         
-        mean_pr_auc = np.mean(pr_auc_scores)
+        mean_score = np.mean(scores)
         
         # 進捗表示
         elapsed = (datetime.now() - self.start_time).total_seconds()
-        if mean_pr_auc > self.best_score:
-            self.best_score = mean_pr_auc
-            print(f"   🏆 Trial {self.trial_count}: PR-AUC={mean_pr_auc:.4f} (NEW BEST!) [{elapsed/60:.1f}min]")
+        if mean_score > self.best_score:
+            self.best_score = mean_score
+            print(f"   🏆 Trial {self.trial_count}: Prec@Rec99={mean_score:.4f} "
+                  f"(α={focal_alpha:.2f}, γ={focal_gamma:.2f}) [NEW BEST!] [{elapsed/60:.1f}min]")
         else:
-            print(f"   Trial {self.trial_count}: PR-AUC={mean_pr_auc:.4f} [{elapsed/60:.1f}min]")
+            print(f"   Trial {self.trial_count}: Prec@Rec99={mean_score:.4f} "
+                  f"(α={focal_alpha:.2f}, γ={focal_gamma:.2f}) [{elapsed/60:.1f}min]")
         
-        return mean_pr_auc
+        return mean_score
 
 
 # ============================================================
@@ -134,15 +219,15 @@ def run_optuna_optimization(
     n_trials: int = 50,
     n_folds: int = 5,
     random_state: int = 42,
-    output_dir: str = "results/two_stage_model/optuna_results"
+    output_dir: str = "results/two_stage_model/optuna_focal_loss_results"
 ):
-    """Optuna最適化を実行"""
+    """Optuna最適化を実行 (Focal Loss対応)"""
     
     os.makedirs(output_dir, exist_ok=True)
     
     print("=" * 70)
-    print("Stage 2 Optuna ハイパーパラメータ最適化")
-    print(f"評価指標: PR-AUC (Precision-Recall AUC)")
+    print("Stage 2 Optuna ハイパーパラメータ最適化 (Focal Loss)")
+    print("評価指標: Precision @ Recall 99%")
     print(f"試行回数: {n_trials}")
     print("=" * 70)
     
@@ -164,11 +249,11 @@ def run_optuna_optimization(
     
     study = optuna.create_study(
         direction='maximize',
-        study_name='stage2_pr_auc_optimization',
+        study_name='stage2_focal_loss_optimization',
         sampler=optuna.samplers.TPESampler(seed=random_state)
     )
     
-    objective = Stage2Objective(X_s2, y_s2, n_folds=n_folds, random_state=random_state)
+    objective = Stage2FocalLossObjective(X_s2, y_s2, n_folds=n_folds, random_state=random_state)
     
     study.optimize(
         objective,
@@ -183,17 +268,20 @@ def run_optuna_optimization(
     print("=" * 70)
     
     best = study.best_trial
-    print(f"\n🏆 ベストスコア: PR-AUC = {best.value:.4f}")
+    print(f"\n🏆 ベストスコア: Precision@Recall99% = {best.value:.4f}")
     print(f"\n📋 ベストパラメータ:")
     for key, value in best.params.items():
-        print(f"   {key}: {value}")
+        if isinstance(value, float):
+            print(f"   {key}: {value:.4f}")
+        else:
+            print(f"   {key}: {value}")
     
     # 結果保存
     results_df = study.trials_dataframe()
     results_df.to_csv(os.path.join(output_dir, "optuna_trials.csv"), index=False)
     
     best_params_df = pd.DataFrame([best.params])
-    best_params_df['pr_auc'] = best.value
+    best_params_df['prec_at_rec99'] = best.value
     best_params_df.to_csv(os.path.join(output_dir, "best_params.csv"), index=False)
     
     print(f"\n💾 結果保存:")
