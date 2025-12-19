@@ -465,7 +465,7 @@ class TwoStageTabNetPipeline:
             # モデル保存用パス
             model_dir = "results/models/tabnet_stage2"
             os.makedirs(model_dir, exist_ok=True)
-            model_path = os.path.join(model_dir, f"tabnet_fold{fold+1}.zip")
+            model_path = os.path.join(model_dir, f"tabnet_fold{fold+1}")  # save_modelが.zipを自動追加
             
             # TabNetモデル初期化
             model = TabNetClassifier(
@@ -486,9 +486,10 @@ class TwoStageTabNetPipeline:
             )
             
             # 途中再開ロジック
-            if os.path.exists(model_path):
-                print(f"   📥 既存のモデルが見つかりました、学習をスキップしてロードします: {model_path}")
-                model.load_model(model_path)
+            model_file = model_path + ".zip"  # save_modelが作成するファイル名
+            if os.path.exists(model_file):
+                print(f"   📥 既存のモデルが見つかりました、学習をスキップしてロードします: {model_file}")
+                model.load_model(model_file)
             else:
                 model.fit(
                     X_train, y_train,
@@ -503,8 +504,11 @@ class TwoStageTabNetPipeline:
                 model.save_model(model_path)
                 print(f"   💾 モデルを保存しました: {model_path}")
             
-            # ベストエポック表示
-            print(f"\n   ✅ Fold {fold+1} 完了: Best Epoch = {model.best_epoch}")
+            # ベストエポック表示 (ロード時はbest_epochが存在しない)
+            if hasattr(model, 'best_epoch') and model.best_epoch is not None:
+                print(f"\n   ✅ Fold {fold+1} 完了: Best Epoch = {model.best_epoch}")
+            else:
+                print(f"\n   ✅ Fold {fold+1} 完了: (ロード済みモデル)")
             
             # OOF予測
             proba = model.predict_proba(X_val)[:, 1]
@@ -598,7 +602,7 @@ class TwoStageTabNetPipeline:
         # アンサンブル用OOF保存
         oof_df = pd.DataFrame({
             'index': self.X[self.stage2_mask].index,
-            'true_label': y_binary_stage2,
+            'true_label': y_s2_bin,
             'prob': prob_fatal
         })
         os.makedirs('results/oof', exist_ok=True)

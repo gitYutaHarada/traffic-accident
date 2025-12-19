@@ -1,17 +1,16 @@
 """
-Stage 2 二値分類（負傷 vs 死亡）パイプライン
-============================================
+Stage 2 二値分類（負傷 vs 死亡）パイプライン - Cleanlab Denoised Version
+========================================================================
 Stage 1: LightGBM (Binary) + Under-sampling + 3-Seed Averaging  (既存と同じ)
-Stage 2: LightGBM (Binary: 0=負傷, 1=死亡)
+Stage 2: LightGBM (Binary: 0=負傷, 1=死亡) - **Cleanlab検出ノイズを学習データから除外**
 
 目的変数:
   0: 負傷 (死者数==0)
   1: 死亡 (死者数>0)
 
-データリーク防止:
-  - 特徴量データ (X) には一切手を加えない
-  - 負傷者数は生データから**ラベル生成用にのみ**抽出
-  - Xに負傷者数を含めないことをアサートで保証
+変更点:
+  - Cleanlabで検出された「Fatal Look-alikes」を学習データからのみ除外
+  - 検証データ・テストデータはそのまま（実力評価のため）
 """
 
 import pandas as pd
@@ -31,6 +30,12 @@ from scipy.special import expit, softmax
 import warnings
 
 warnings.filterwarnings('ignore')
+
+
+# ============================================================================
+# 設定
+# ============================================================================
+NOISE_INDICES_PATH = "results/data_quality/cleanlab/noise_indices_fatal_lookalike.txt"
 
 
 # ============================================================================
@@ -59,8 +64,8 @@ def check_no_leakage(X: pd.DataFrame, context: str = ""):
 # ============================================================================
 # メインパイプライン
 # ============================================================================
-class TwoStageBinaryPipeline:
-    """2段階モデル + 二値分類 Stage 2 パイプライン (負傷 vs 死亡)"""
+class TwoStageBinaryPipelineCleaned:
+    """2段階モデル + 二値分類 Stage 2 パイプライン (負傷 vs 死亡) - Cleanlab Denoised"""
     
     def __init__(
         self,
@@ -76,6 +81,8 @@ class TwoStageBinaryPipeline:
         test_size: float = 0.2,
         # オプション
         use_logits_stage1: bool = True,
+        # Cleanlab設定
+        noise_indices_path: str = NOISE_INDICES_PATH,
     ):
         self.features_path = features_path
         self.raw_data_path = raw_data_path
@@ -88,20 +95,35 @@ class TwoStageBinaryPipeline:
         self.top_k_interactions = top_k_interactions
         self.test_size = test_size
         self.use_logits_stage1 = use_logits_stage1
+        self.noise_indices_path = noise_indices_path
         
-        self.output_dir = "results/two_stage_model/binary_pipeline"
+        self.output_dir = "results/two_stage_model/cleaned_pipeline"
         os.makedirs(self.output_dir, exist_ok=True)
         
         # モデル保存用
         self.stage1_models = []
         self.stage2_models = []
         
+        # ノイズインデックス読み込み
+        self._load_noise_indices()
+        
         print("=" * 60)
-        print("2段階モデル + 二値分類パイプライン (負傷 vs 死亡)")
+        print("2段階モデル + 二値分類パイプライン (Cleanlab Denoised)")
         print(f"Stage 1: 1:{int(self.undersample_ratio)} Under-sampling, Recall {self.stage1_recall_target:.0%}")
-        print(f"Stage 2: Binary (0=負傷, 1=死亡)")
+        print(f"Stage 2: Binary (0=負傷, 1=死亡) - ノイズ除外学習")
         print(f"Test Set: {self.test_size:.0%}")
+        print(f"ノイズインデックス: {len(self.noise_indices):,}件 ({self.noise_indices_path})")
         print("=" * 60)
+    
+    def _load_noise_indices(self):
+        """Cleanlabで検出されたノイズインデックスを読み込む"""
+        if os.path.exists(self.noise_indices_path):
+            self.noise_indices = set(np.loadtxt(self.noise_indices_path, dtype=int).tolist())
+            print(f"   📂 ノイズインデックス読み込み完了: {len(self.noise_indices):,}件")
+        else:
+            self.noise_indices = set()
+            print(f"   ⚠️ ノイズインデックスファイルが見つかりません: {self.noise_indices_path}")
+            print("      ノイズ除去なしで実行します。")
     
     def load_data(self):
         """
@@ -353,25 +375,31 @@ class TwoStageBinaryPipeline:
         return X_out
     
     def train_stage2_binary(self):
-        """Stage 2: 二値分類 LightGBM (0=負傷, 1=死亡)
+        """Stage 2: 二値分類 LightGBM (0=負傷, 1=死亡) - Cleanlab Denoised
         
         Stage 1を通過した「紛らわしい負傷（Hard Negatives）」と「死亡」を識別する。
-        データセットに無傷（Class 0）が存在しないため、純粋な二値分類として定式化。
+        **変更点**: 学習データからCleanlabで検出されたノイズを除外
         """
-        print("\n🌿 Stage 2: LightGBM Binary Classification (5-Fold CV)")
+        print("\n🌿 Stage 2: LightGBM Binary Classification (5-Fold CV) - Cleanlab Denoised")
         print(f"   クラス: 0=負傷 (Hard Negatives), 1=死亡")
+        print(f"   ⚡ ノイズ除外モード: 学習データから {len(self.noise_indices):,} 件を除外候補")
         
         # Stage 2用データ (Stage 1でフィルタリング後)
+        # reset_index(drop=True) はせず、元のインデックスを保持
         X_s2_base = self.generate_stage2_features(
             self.X[self.stage2_mask].copy(),
             self.oof_logits_stage1[self.stage2_mask],
             fit_categories=True
-        ).reset_index(drop=True)
+        )
+        # 元インデックスを保持するためにreset_indexをしない
+        # Stage2データのインデックスはself.X[self.stage2_mask].index と同じ
         
         # 二値ラベル: 死亡(1) vs 負傷(0)
-        # y_mc から: Class 2 -> 1 (死亡), Class 1 -> 0 (負傷), Class 0 -> 除外 (存在しない)
         y_s2_mc = self.y_mc[self.stage2_mask]
         y_s2_binary = (y_s2_mc == 2).astype(int)  # 死亡=1, 負傷=0
+        
+        # Stage 2データの元インデックス (全体データセットにおけるインデックス)
+        s2_original_indices = self.X[self.stage2_mask].index.values
         
         # クラス分布
         n_pos = y_s2_binary.sum()
@@ -386,6 +414,10 @@ class TwoStageBinaryPipeline:
         self.stage2_models = []
         self.stage2_feature_names = list(X_s2_base.columns)
         stage2_feature_importances = np.zeros(len(self.stage2_feature_names))
+        
+        # リセットインデックスを作成（CV用）
+        X_s2_reset = X_s2_base.reset_index(drop=True)
+        y_s2_reset = y_s2_binary.copy()
         
         skf = StratifiedKFold(n_splits=self.n_folds, shuffle=True, random_state=self.random_state)
         
@@ -407,42 +439,54 @@ class TwoStageBinaryPipeline:
             'n_jobs': -1
         }
         
-        for fold, (train_idx, val_idx) in enumerate(skf.split(X_s2_base, y_s2_binary)):
+        total_noise_removed = 0
+        
+        for fold, (train_idx, val_idx) in enumerate(skf.split(X_s2_reset, y_s2_reset)):
             print(f"   Fold {fold+1}/{self.n_folds}...")
             
-            X_train = X_s2_base.iloc[train_idx]
-            X_val = X_s2_base.iloc[val_idx]
-            y_train = y_s2_binary[train_idx]
-            y_val = y_s2_binary[val_idx]
+            # ============================================================
+            # ★ Cleanlab Denoising: 学習データからノイズを除外
+            # ============================================================
+            # train_idx はリセット後のインデックス (0, 1, 2, ...)
+            # s2_original_indices[train_idx] で元のインデックスを取得
+            train_original_indices = s2_original_indices[train_idx]
+            
+            # ノイズリストに含まれるインデックスを除外
+            clean_mask = ~np.isin(train_original_indices, list(self.noise_indices))
+            clean_train_idx = train_idx[clean_mask]
+            
+            n_removed = len(train_idx) - len(clean_train_idx)
+            total_noise_removed += n_removed
+            print(f"      ノイズ除外: {n_removed:,} 件 (残り: {len(clean_train_idx):,} 件)")
+            
+            X_train = X_s2_reset.iloc[clean_train_idx]
+            X_val = X_s2_reset.iloc[val_idx]
+            y_train = y_s2_reset[clean_train_idx]
+            y_val = y_s2_reset[val_idx]
             
             # 各Foldの訓練データに基づいてscale_pos_weightを計算 (Best Practice)
             n_pos_fold = y_train.sum()
             n_neg_fold = len(y_train) - n_pos_fold
             scale_pos_weight = n_neg_fold / n_pos_fold if n_pos_fold > 0 else 1.0
             
-            
             # モデル保存用パス
-            model_dir = "results/models/lgb_stage2"
+            model_dir = "results/models/lgb_stage2_cleaned"
             os.makedirs(model_dir, exist_ok=True)
             model_path = os.path.join(model_dir, f"lgb_fold{fold+1}.pkl")
             
-            # 途中再開ロジック
-            if os.path.exists(model_path):
-                print(f"   📥 既存のモデルが見つかりました、学習をスキップしてロードします: {model_path}")
-                model = joblib.load(model_path)
-            else:
-                model = lgb.LGBMClassifier(
-                    **lgb_base_params, 
-                    scale_pos_weight=scale_pos_weight,
-                    random_state=self.random_state
-                )
-                model.fit(
-                    X_train, y_train,
-                    eval_set=[(X_val, y_val)],
-                    callbacks=[lgb.early_stopping(50, verbose=False)]
-                )
-                joblib.dump(model, model_path)
-                print(f"   💾 モデルを保存しました: {model_path}")
+            # 毎回新しくモデルを学習（Denoised版なので既存モデルは使わない）
+            model = lgb.LGBMClassifier(
+                **lgb_base_params, 
+                scale_pos_weight=scale_pos_weight,
+                random_state=self.random_state
+            )
+            model.fit(
+                X_train, y_train,
+                eval_set=[(X_val, y_val)],
+                callbacks=[lgb.early_stopping(50, verbose=False)]
+            )
+            joblib.dump(model, model_path)
+            print(f"      💾 モデルを保存しました: {model_path}")
             
             # OOF予測 (死亡確率)
             proba = model.predict_proba(X_val)[:, 1]
@@ -455,6 +499,8 @@ class TwoStageBinaryPipeline:
             
             del X_train, X_val
             gc.collect()
+        
+        print(f"\n   📊 ノイズ除外合計: {total_noise_removed:,} 件 (全Fold合計)")
         
         # Stage 2 OOF評価
         oof_pred = (self.oof_proba_stage2 >= 0.5).astype(int)
@@ -541,16 +587,6 @@ class TwoStageBinaryPipeline:
         
         print(f"\n   [全体評価 @ Best Thresh] Precision: {self.final_precision:.4f}, Recall: {self.final_recall:.4f}, F1: {self.final_f1:.4f}")
         print(f"   [全体AUC]: {self.final_auc:.4f}")
-        
-        # アンサンブル用OOF保存
-        oof_df = pd.DataFrame({
-            'index': self.X[self.stage2_mask].index,
-            'true_label': y_s2_bin,
-            'prob': prob_fatal
-        })
-        os.makedirs('results/oof', exist_ok=True)
-        oof_df.to_csv('results/oof/oof_stage2_lightgbm.csv', index=False)
-        print("\n   💾 OOF予測を保存しました: results/oof/oof_stage2_lightgbm.csv")
         
         return {
             'stage1_threshold': self.threshold_stage1,
@@ -670,16 +706,6 @@ class TwoStageBinaryPipeline:
         print(f"   [全体評価] Precision: {test_precision:.4f}, Recall: {test_recall:.4f}, F1: {test_f1:.4f}")
         print(f"   [全体AUC]: {test_auc:.4f}")
         
-        # アンサンブル用Test予測保存
-        test_df = pd.DataFrame({
-            'index': self.X_test[test_stage2_mask].index,
-            'true_label': y_test_bin,
-            'prob': prob_fatal
-        })
-        os.makedirs('results/test_preds', exist_ok=True)
-        test_df.to_csv('results/test_preds/test_stage2_lightgbm.csv', index=False)
-        print("\n   💾 Test予測を保存しました: results/test_preds/test_stage2_lightgbm.csv")
-        
         return {
             'test_precision': test_precision,
             'test_recall': test_recall,
@@ -691,17 +717,17 @@ class TwoStageBinaryPipeline:
     
     def generate_report(self, results: dict, elapsed_sec: float):
         """実験レポートをMarkdownで出力"""
-        report_path = os.path.join(self.output_dir, "experiment_report.md")
+        report_path = os.path.join(self.output_dir, "experiment_report_cleaned.md")
         
-        report_content = f"""# 多クラス分類 Stage 2 実験レポート
+        report_content = f"""# Stage 2 Cleanlab Denoised 実験レポート
 
 **実行日時**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 **実行時間**: {elapsed_sec:.1f}秒
 
 ## モデル構成
 - **Stage 1**: Binary Classification (死亡 vs その他)
-- **Stage 2**: Multiclass Classification (0=無傷, 1=負傷, 2=死亡)
-- **Objective**: multiclass (class_weight使用)
+- **Stage 2**: Binary Classification (0=負傷, 1=死亡) - **Cleanlab Denoised**
+- **ノイズ除外件数**: {len(self.noise_indices):,} 件
 
 ## 結果サマリ
         
@@ -711,7 +737,7 @@ class TwoStageBinaryPipeline:
 - **フィルタリング率**: {results['filter_rate']*100:.2f}%
 - **負傷事故(Class 1) 通過率**: {self.class_pass_rates.get(1, 0)*100:.1f}%
 
-### Stage 2 Binary Classification (CV OOF)
+### Stage 2 Binary Classification (CV OOF) - Denoised
 
 **Best F1 閾値 ({results['best_f1_threshold']:.4f}) での評価**:
 | 指標 | 値 |
@@ -742,9 +768,9 @@ class TwoStageBinaryPipeline:
 
 ## 考察
 
-- 多クラス分類により、モデルは「無傷」「負傷」「死亡」の3段階の重大性を学習
-- P(Injury+) スコアで「明らかに無害な事故」を除外することで、Precision向上の余地あり
-- Binary分類と比較して、死亡事故の特定精度が向上しているか要検証
+- Cleanlabで検出された「Fatal Look-alikes」を学習データから除外
+- これにより、モデルは「純粋な死亡パターン」のみを学習
+- テストデータにはノイズが残っているため、現実世界での性能を正しく評価
 """
         
         with open(report_path, 'w', encoding='utf-8') as f:
@@ -770,7 +796,7 @@ class TwoStageBinaryPipeline:
         results['elapsed_sec'] = elapsed_sec
         
         # 結果保存
-        pd.DataFrame([results]).to_csv(os.path.join(self.output_dir, "final_results.csv"), index=False)
+        pd.DataFrame([results]).to_csv(os.path.join(self.output_dir, "final_results_cleaned.csv"), index=False)
         self.feature_importance_df.to_csv(os.path.join(self.output_dir, "stage1_feature_importance.csv"), index=False)
         self.stage2_feature_importance_df.to_csv(os.path.join(self.output_dir, "stage2_feature_importance.csv"), index=False)
         
@@ -778,14 +804,14 @@ class TwoStageBinaryPipeline:
         self.generate_report(results, elapsed_sec)
         
         print("\n" + "=" * 60)
-        print("✅ 完了！")
-        print(f"   結果CSV: {self.output_dir}/final_results.csv")
-        print(f"   レポートMD: {self.output_dir}/experiment_report.md")
+        print("✅ 完了！ (Cleanlab Denoised Pipeline)")
+        print(f"   結果CSV: {self.output_dir}/final_results_cleaned.csv")
+        print(f"   レポートMD: {self.output_dir}/experiment_report_cleaned.md")
         print("=" * 60)
         
         return results
 
 
 if __name__ == "__main__":
-    pipeline = TwoStageBinaryPipeline()
+    pipeline = TwoStageBinaryPipelineCleaned()
     pipeline.run()
