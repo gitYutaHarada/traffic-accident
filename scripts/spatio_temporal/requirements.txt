@@ -1,0 +1,34 @@
+# Spatio-Temporal Stage2 Model Requirements
+# ==========================================
+
+# Core
+numpy>=1.21.0
+pandas>=1.3.0
+scikit-learn>=1.0.0
+joblib>=1.0.0
+pyarrow>=8.0.0
+
+# Deep Learning
+torch>=2.0.0
+torch-geometric>=2.3.0
+torch-scatter>=2.1.0
+torch-sparse>=0.6.0
+
+# Hyperparameter Optimization
+optuna>=3.0.0
+
+# Logging & Tracking  
+tensorboard>=2.10.0
+mlflow>=2.0.0
+
+# Geospatial
+geohash2>=1.1
+folium>=0.14.0
+
+# Visualization
+matplotlib>=3.5.0
+seaborn>=0.11.0
+
+# Utilities
+tqdm>=4.64.0
+pyyaml>=6.0

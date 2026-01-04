@@ -93,6 +93,7 @@ class TwoStageFinalPipeline:
         # Optuna最適化パラメータ (optuna_focal_loss_v2)
         focal_alpha: float = 0.6321,
         focal_gamma: float = 1.1495,
+        output_dir: str = "results/two_stage_model/final_pipeline",  # 出力ディレクトリ
     ):
         self.data_path = data_path
         self.target_col = target_col
@@ -106,7 +107,7 @@ class TwoStageFinalPipeline:
         self.focal_alpha = focal_alpha
         self.focal_gamma = focal_gamma
         
-        self.output_dir = "results/two_stage_model/final_pipeline"
+        self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
         
         print("=" * 60)

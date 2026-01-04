@@ -39,6 +39,27 @@ def main(input_path: str, output_path: str):
         df['maybe_vulnerable_victim'] = ((df['速度規制（指定のみ）（当事者B）'] == 0) & (df['速度規制（指定のみ）（当事者A）'] > 0)).astype(int)
         print(f"  Created 'speed_reg_diff', 'speed_reg_diff_abs', 'maybe_vulnerable_victim'.")
 
+    # A3. 当事者種別の組み合わせ (party_type_combo) - Implementation Plan から
+    if '当事者種別（当事者A）' in df.columns:
+        if '当事者種別（当事者B）' in df.columns:
+            df['party_type_combo'] = df['当事者種別（当事者A）'].astype(str) + '_' + df['当事者種別（当事者B）'].astype(str)
+            print(f"  Created 'party_type_combo'.")
+        else:
+            # 当事者Bがない場合は単独特徴量として作成
+            print(f"  [WARN] '当事者種別（当事者B）' not found. party_type_combo skipped.")
+    
+    # A4. 年齢差 (age_diff) - Implementation Plan から
+    if '年齢（当事者A）' in df.columns:
+        if '年齢（当事者B）' in df.columns:
+            df['age_diff'] = df['年齢（当事者A）'] - df['年齢（当事者B）']
+            df['age_diff_abs'] = df['age_diff'].abs()
+            print(f"  Created 'age_diff', 'age_diff_abs'.")
+        else:
+            # 当事者Bがない場合は年齢の派生特徴量を作成
+            df['party_a_senior'] = (df['年齢（当事者A）'] >= 65).astype(int)
+            df['party_a_young'] = (df['年齢（当事者A）'] <= 25).astype(int)
+            print(f"  [WARN] '年齢（当事者B）' not found. Created 'party_a_senior', 'party_a_young' instead.")
+
     # === B. 道路環境の複合リスク (Environment Interactions) ===
     print("\n--- Creating Environment Interaction Features ---")
     
