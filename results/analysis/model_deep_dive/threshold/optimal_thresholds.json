@@ -1,0 +1,18 @@
+{
+  "recall_95": {
+    "name": "Recall 95%+",
+    "threshold": 0.001,
+    "recall": 0.9725974527209572,
+    "precision": 0.017636190582834107,
+    "alerts": 142888,
+    "missed": 71
+  },
+  "best_f1": {
+    "name": "F1 Max",
+    "threshold": 0.15000000000000002,
+    "recall": 0.26707834812813586,
+    "precision": 0.28187372708757635,
+    "alerts": 2455,
+    "missed": 1899
+  }
+}

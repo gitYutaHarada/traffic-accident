@@ -88,10 +88,45 @@ python scripts/analysis/lightgbm_weighted_optimization.py
 4. **地点コード** - 2060
 5. **発生時** (時間帯) - 884
 
-## 🔬 実験結果
+## 📊 モデル実験レポート: Stage 2 vs Stage 3
 
+**[詳細レポート: model_comparison_report.md](results/md/model_comparison_report.md)**
+
+最新の実験により、**Stage 3 Stacking** が最も高い予測性能（Test AUC: 0.9030, PR-AUC: 0.1760）を達成しました。
+
+### アプローチの比較
+
+| 重視点 | モデル | 特徴 | 評価 |
+| :--- | :--- | :--- | :--- |
+| **全体最適** | **Stage 2 Single-Stage** (TabNet等) | 学習データ全量を使用。汎化性能が高い。 | **AUC最強** (0.8984) |
+| **難問特化** | **Stage 2 Two-Stage** (CatBoost等) | 「安全」データを除去し、判断が難しいデータに集中。 | **PR-AUCが高い** (0.1611) |
+| **統合** | **Stage 3 Stacking** | 上記「最強の盾」と「最強の矛」をロジスティック回帰で統合。 | **総合最強** (AUC 0.9030 / PR-AUC 0.1760) |
+
+### データセットの拡張
+本実験では、警察庁データに加え、以下の外部データを統合して環境要因を考慮しています。
+*   **国土交通省 道路交通センサス**: 交通量、大型車混入率、混雑度など
+*   **国土数値情報 医療機関データ**: 最寄り病院への距離、病床数、救急指定など（救命可能性の指標）
+
+### 🧪 関連スクリプト
+
+本実験（Stage 2 ~ Stage 3）を実施するための主要スクリプトです。
+
+#### 1. Stage 3 Stacking (最終モデル)
+異なる特性を持つモデルを統合し、最終的な予測を出力します。
+```powershell
+python scripts/modeling/train_stage3_stacking.py
+```
+*   **主な機能**: Single-StageとTwo-Stageの予測値を統合、Easy Sampleの補完、マルチコ（多重共線性）対策
+
+#### 2. Stage 2 Two-Stage (Specialist)
+Stage 1で判別しきれなかった「難易度の高い」データに特化して学習します。
+```powershell
+python scripts/modeling/train_stage2_4models_spatiotemporal_twostage.py
+```
+*   **主な機能**: Stage 1の予測結果に基づき、安全なデータをフィルタリングして学習（LightGBM, CatBoost, MLP, TabNet）
+
+### その他の実験レポート
 詳細は `results/experiments/` を参照:
-
 - **カテゴリカル変数・日時分解**: [categorical_datetime_experiment.md](results/experiments/categorical_datetime_experiment.md)
 - **日別事故傾向分析**: [day_of_month_analysis.md](results/experiments/day_of_month_analysis.md)
 

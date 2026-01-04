@@ -1,0 +1,8 @@
+{
+  "threshold": 0.14,
+  "total_samples": 282376,
+  "fatal_count": 2591,
+  "recall": 0.29409494403705133,
+  "precision": 0.26357661708751295,
+  "generated_at": "2025-12-30T17:01:27.512103"
+}

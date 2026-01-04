@@ -4,3 +4,22 @@ ml_training/advanced_models/artifacts/random_forest/model.joblib
 *.pkl
 __pycache__/
 *.pyc
+
+# CatBoost
+catboost_info/
+
+# Large Data
+data/processed/honhyo_*.csv
+data/processed/stage1_oof_predictions.csv
+data/spatio_temporal/
+data/spatio_temporal_filtered/
+
+# Large binaries/models
+*.pt
+*.parquet
+*.joblib
+results/spatio_temporal/checkpoints/
+results/spatio_temporal/heatmap.html
+
+# Results folders that might contain large data (optional, but good practice if not needed)
+results/moe_stage2/checkpoints/
