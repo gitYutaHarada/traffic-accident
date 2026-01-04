@@ -1,0 +1,18 @@
+======================================================================
+Spatio-Temporal �O�����p�C�v���C��
+Train: 2018-2022
+Val:   2023-2023
+Test:  2024-2024
+======================================================================
+Traceback (most recent call last):
+  File "C:\Users\socce\software-lab\traffic-accident\scripts\spatio_temporal\preprocess_spatio_temporal.py", line 629, in <module>
+    main()
+  File "C:\Users\socce\software-lab\traffic-accident\scripts\spatio_temporal\preprocess_spatio_temporal.py", line 624, in main
+    result = preprocessor.run()
+             ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\socce\software-lab\traffic-accident\scripts\spatio_temporal\preprocess_spatio_temporal.py", line 538, in run
+    df = self.load_data()
+         ^^^^^^^^^^^^^^^^
+  File "C:\Users\socce\software-lab\traffic-accident\scripts\spatio_temporal\preprocess_spatio_temporal.py", line 73, in load_data
+    print("\n\U0001f4c2 �f�[�^�ǂݍ��ݒ�...")
+UnicodeEncodeError: 'cp932' codec can't encode character '\U0001f4c2' in position 2: illegal multibyte sequence

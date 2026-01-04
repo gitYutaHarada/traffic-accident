@@ -1,0 +1,46 @@
+{
+  "model_type": "knn_gnn",
+  "config": {
+    "hidden_dim": 128,
+    "num_layers": 2,
+    "dropout": 0.3,
+    "learning_rate": 0.001,
+    "batch_size": 1024,
+    "epochs": 50,
+    "patience": 15,
+    "focal_alpha": 0.75,
+    "focal_gamma": 2.0,
+    "k_neighbors": 8
+  },
+  "train_info": {
+    "best_val_auc": 0.7843730706764004
+  },
+  "test_metrics": {
+    "pr_auc": 0.25107212470088985,
+    "roc_auc": 0.8109196918017635,
+    "ece": 0.07243465121911934,
+    "brier_score": 0.019957128912210464,
+    "precision_at_100": "0.94",
+    "recall_at_100": "0.009090909",
+    "precision_at_500": "0.954",
+    "recall_at_500": "0.04613153",
+    "precision_at_1000": "0.963",
+    "recall_at_1000": "0.093133464",
+    "threshold_at_recall_99": "8.6018614e-09",
+    "precision_at_recall_99": 0.009134844474744212,
+    "threshold_at_recall_95": "0.0001325778",
+    "precision_at_recall_95": 0.010362142261885924,
+    "threshold_at_recall_90": "0.006129421",
+    "precision_at_recall_90": 0.012013710036598827,
+    "precision_at_0.3": 0.1033135389302192,
+    "recall_at_0.3": 0.4526112185686654,
+    "f1_at_0.3": 0.1682273225615126,
+    "precision_at_0.5": 0.8988235294117647,
+    "recall_at_0.5": 0.14777562862669247,
+    "f1_at_0.5": 0.2538205980066445,
+    "precision_at_0.7": 0.9508615188257817,
+    "recall_at_0.7": 0.14410058027079303,
+    "f1_at_0.7": 0.2502729486856471
+  },
+  "elapsed_seconds": 1213.882222
+}

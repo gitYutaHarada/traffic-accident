@@ -1,0 +1,46 @@
+{
+  "model_type": "mlp",
+  "config": {
+    "hidden_dim": 128,
+    "num_layers": 2,
+    "dropout": 0.3,
+    "learning_rate": 0.001,
+    "batch_size": 1024,
+    "epochs": 50,
+    "patience": 15,
+    "focal_alpha": 0.75,
+    "focal_gamma": 2.0,
+    "k_neighbors": 8
+  },
+  "train_info": {
+    "best_val_auc": 0.8767402024969642
+  },
+  "test_metrics": {
+    "pr_auc": 0.2889106964828084,
+    "roc_auc": 0.8770186702890186,
+    "ece": 0.06703290419998342,
+    "brier_score": 0.016972307115793228,
+    "precision_at_100": "0.99",
+    "recall_at_100": "0.009574468",
+    "precision_at_500": "0.976",
+    "recall_at_500": "0.047195356",
+    "precision_at_1000": "0.941",
+    "recall_at_1000": "0.0910058",
+    "threshold_at_recall_99": "0.0012658775",
+    "precision_at_recall_99": 0.009437676028745408,
+    "threshold_at_recall_95": "0.027885752",
+    "precision_at_recall_95": 0.01298550218848609,
+    "threshold_at_recall_90": "0.058439475",
+    "precision_at_recall_90": 0.018265592866450023,
+    "precision_at_0.3": 0.12232152708816066,
+    "recall_at_0.3": 0.536073500967118,
+    "f1_at_0.3": 0.19919144730931632,
+    "precision_at_0.5": 0.3683793422269185,
+    "recall_at_0.5": 0.26972920696324953,
+    "f1_at_0.5": 0.31142873094746243,
+    "precision_at_0.7": 0.8941425546930134,
+    "recall_at_0.7": 0.12253384912959381,
+    "f1_at_0.7": 0.21553117291826146
+  },
+  "elapsed_seconds": 83.824148
+}

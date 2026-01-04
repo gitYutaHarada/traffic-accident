@@ -1,0 +1,71 @@
+{
+  "timestamp": "2025-12-24T14:24:35.613982",
+  "elapsed_seconds": 125.366786,
+  "data_path": "data/processed/honhyo_stage1_unified_filtered.csv",
+  "models": [
+    "mlp"
+  ],
+  "results": {
+    "preprocess": {
+      "train_size": 189722,
+      "val_size": 157049,
+      "test_size": 606755,
+      "n_features": 198,
+      "elapsed_seconds": 49.322665
+    },
+    "graph": {
+      "n_nodes": 57609,
+      "n_edges": 460789
+    },
+    "models": {
+      "mlp": {
+        "model_type": "mlp",
+        "config": {
+          "hidden_dim": 128,
+          "num_layers": 2,
+          "dropout": 0.3,
+          "learning_rate": 0.001,
+          "batch_size": 1024,
+          "epochs": 50,
+          "patience": 15,
+          "focal_alpha": 0.75,
+          "focal_gamma": 2.0,
+          "k_neighbors": 8
+        },
+        "train_info": {
+          "best_val_auc": 0.9999737726165703
+        },
+        "test_metrics": {
+          "pr_auc": 0.994495015332492,
+          "roc_auc": 0.9999519807565986,
+          "ece": 0.012678938145152025,
+          "brier_score": 0.0003953554842155427,
+          "precision_at_100": "0.98",
+          "recall_at_100": "0.009489687",
+          "precision_at_500": "0.992",
+          "recall_at_500": "0.048029438",
+          "precision_at_1000": "0.991",
+          "recall_at_1000": "0.09596204",
+          "threshold_at_recall_99": "0.66607505",
+          "precision_at_recall_99": 0.9943192759483921,
+          "threshold_at_recall_95": "0.9999989",
+          "precision_at_recall_95": 0.9943960772540779,
+          "threshold_at_recall_90": "1.0",
+          "precision_at_recall_90": 0.9945077298616761,
+          "precision_at_0.3": 0.9943192759483921,
+          "recall_at_0.3": 1.0,
+          "f1_at_0.3": 0.997151547337421,
+          "precision_at_0.5": 0.9943192759483921,
+          "recall_at_0.5": 1.0,
+          "f1_at_0.5": 0.997151547337421,
+          "precision_at_0.7": 0.9943187289359653,
+          "recall_at_0.7": 0.9999031664568606,
+          "f1_at_0.7": 0.9971031286210892
+        },
+        "elapsed_seconds": 57.615613
+      }
+    }
+  },
+  "mlp_pr_auc": 0.994495015332492,
+  "mlp_roc_auc": 0.9999519807565986
+}

@@ -1,0 +1,23 @@
+{
+  "100": {
+    "total": 100,
+    "unique_geohash": 81,
+    "diversity_ratio": 0.81,
+    "fatal_count": 99,
+    "precision": 0.99
+  },
+  "500": {
+    "total": 500,
+    "unique_geohash": 442,
+    "diversity_ratio": 0.884,
+    "fatal_count": 488,
+    "precision": 0.976
+  },
+  "1000": {
+    "total": 1000,
+    "unique_geohash": 892,
+    "diversity_ratio": 0.892,
+    "fatal_count": 941,
+    "precision": 0.941
+  }
+}

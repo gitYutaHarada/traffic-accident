@@ -1,0 +1,30 @@
+City Code: 483
+Sample Count: 104
+Centroid: 37.99165386538461, 139.20652948365384
+Map URL: https://www.google.com/maps/search/?api=1&query=37.99165386538461,139.20652948365384
+------------------------------
+City Code: 585
+Sample Count: 159
+Centroid: 36.99994625849056, 136.02292263836478
+Map URL: https://www.google.com/maps/search/?api=1&query=36.99994625849056,136.02292263836478
+------------------------------
+City Code: 586
+Sample Count: 154
+Centroid: 36.34836016233766, 135.34322811948053
+Map URL: https://www.google.com/maps/search/?api=1&query=36.34836016233766,135.34322811948053
+------------------------------
+City Code: 434
+Sample Count: 101
+Centroid: 39.542220475247525, 140.42318691386137
+Map URL: https://www.google.com/maps/search/?api=1&query=39.542220475247525,140.42318691386137
+------------------------------
+City Code: 492
+Sample Count: 124
+Centroid: 31.207452345161286, 130.6009050209677
+Map URL: https://www.google.com/maps/search/?api=1&query=31.207452345161286,130.6009050209677
+------------------------------
+City Code: 311
+Sample Count: 142
+Centroid: 26.285293845070424, 127.50814658380283
+Map URL: https://www.google.com/maps/search/?api=1&query=26.285293845070424,127.50814658380283
+------------------------------

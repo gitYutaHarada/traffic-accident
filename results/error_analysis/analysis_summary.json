@@ -1,0 +1,34 @@
+{
+  "threshold": 0.1260778420151428,
+  "best_f1": 0.2733653226384015,
+  "stats": {
+    "TP": 3817,
+    "TN": 853856,
+    "FP": 11356,
+    "FN": 8936
+  },
+  "correlation_results": {
+    "FP (誤検知)": {
+      "avg_correlation": 0.5126061966670459,
+      "sample_count": 11356
+    },
+    "FN (見逃し)": {
+      "avg_correlation": 0.6613705676657062,
+      "sample_count": 8936
+    },
+    "TP (正検出)": {
+      "avg_correlation": 0.7622321634724396,
+      "sample_count": 3817
+    },
+    "TN (正棄却)": {
+      "avg_correlation": 0.7442823792518766,
+      "sample_count": 853856
+    },
+    "全データ": {
+      "avg_correlation": 0.854092883516544,
+      "sample_count": 877965
+    }
+  },
+  "high_fp_risk_count": 152,
+  "high_fn_risk_count": 0
+}

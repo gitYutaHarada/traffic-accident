@@ -1,0 +1,40 @@
+{
+  "model_type": "lightgbm",
+  "data_source": "honhyo_clean_with_features.csv",
+  "comparison_note": "TabNetと同じ特徴量セットで学習",
+  "oof_metrics": {
+    "roc_auc": 0.866105900669773,
+    "pr_auc": 0.12430219323970124,
+    "brier_score": 0.0829855342473954,
+    "best_f1": 0.20759582698394044,
+    "best_f1_threshold": 0.9012636660713675,
+    "best_f1_precision": 0.16778777830412128,
+    "best_f1_recall": 0.27216843399416013,
+    "precision_at_100": 0.57,
+    "precision_at_500": 0.492,
+    "precision_at_1000": 0.42,
+    "threshold_at_recall_99": 0.004028575844494401,
+    "precision_at_recall_99": 0.00980722007481012,
+    "threshold_at_recall_95": 0.03090378719919667,
+    "precision_at_recall_95": 0.013735488529689496,
+    "threshold_at_recall_90": 0.0836122033607128,
+    "precision_at_recall_90": 0.018115034256638674
+  },
+  "comparison_with_tabnet": {
+    "roc_auc": {
+      "tabnet": 0.8393,
+      "lgb": 0.866105900669773,
+      "diff": 0.026805900669772953
+    },
+    "precision_at_recall_95": {
+      "tabnet": 0.0258,
+      "lgb": 0.013735488529689496,
+      "diff": -0.012064511470310504
+    },
+    "best_f1": {
+      "tabnet": 0,
+      "lgb": 0.20759582698394044,
+      "diff": 0.20759582698394044
+    }
+  }
+}

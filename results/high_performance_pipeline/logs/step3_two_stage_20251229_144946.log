@@ -1,0 +1,76 @@
+🚀 Device: cuda
+🧵 Threads: 8 (P-cores only)
+💾 Available RAM: 64GB
+======================================================================
+🚀 Two-Stage Spatio-Temporal 4-Model Ensemble
+   Spatio-Temporal Data: data\spatio_temporal
+   Stage 1 OOF: data\processed\stage1_oof_predictions.csv
+   Output: results\twostage_spatiotemporal_ensemble
+   Checkpoints: results\twostage_spatiotemporal_ensemble\checkpoints
+   Stage 1 Recall Target: 0.98
+   Folds: 5, Seed: 42
+======================================================================
+
+📂 データ読み込み中...
+   Train: 1,305,369 行
+   Val:   307,296 行
+   Test:  282,376 行
+   Train+Val (学習用): 1,612,665 行
+
+📊 特徴量:
+   数値: 28 列
+   カテゴリ: 31 列
+   合計: 59 列
+
+🔍 Stage 1 フィルタリング適用中...
+   Stage 1 閾値: 0.0645
+   Train OOF: 1,516,220 → 877,965 (通過率: 57.9%)
+   Test:      379,055 → 220,987 (通過率: 58.3%)
+   インデックス一致確認: Train 743,892, Test 31,523
+   フィルタ後 Train: 743,892 行
+   フィルタ後 Test:  31,523 行
+   Train Fatal: 6,358 (0.85%)
+   Test Fatal:  293 (0.93%)
+
+📈 lightgbm 学習中...
+   Fold 1/5...
+Training until validation scores don't improve for 50 rounds
+[100]	valid_0's auc: 0.896908
+[200]	valid_0's auc: 0.897968
+Early stopping, best iteration is:
+[166]	valid_0's auc: 0.898636
+      Fold 1 AUC: 0.8986
+   Fold 2/5...
+Training until validation scores don't improve for 50 rounds
+[100]	valid_0's auc: 0.8951
+[200]	valid_0's auc: 0.896186
+Early stopping, best iteration is:
+[236]	valid_0's auc: 0.896872
+      Fold 2 AUC: 0.8969
+   Fold 3/5...
+Training until validation scores don't improve for 50 rounds
+[100]	valid_0's auc: 0.895298
+[200]	valid_0's auc: 0.897253
+Early stopping, best iteration is:
+[208]	valid_0's auc: 0.897296
+      Fold 3 AUC: 0.8973
+   Fold 4/5...
+Training until validation scores don't improve for 50 rounds
+[100]	valid_0's auc: 0.901952
+[200]	valid_0's auc: 0.904554
+Early stopping, best iteration is:
+[177]	valid_0's auc: 0.904887
+      Fold 4 AUC: 0.9049
+   Fold 5/5...
+Training until validation scores don't improve for 50 rounds
+[100]	valid_0's auc: 0.901791
+[200]	valid_0's auc: 0.903832
+Early stopping, best iteration is:
+[156]	valid_0's auc: 0.904373
+      Fold 5 AUC: 0.9044
+   💾 lgbm チェックポイント保存完了
+   lgbm OOF AUC: 0.9002
+
+🐱 catboost 学習中...
+   Fold 1/5...
+0:	test: 0.5662389	best: 0.5662389 (0)	total: 888ms	remaining: 29m 35s

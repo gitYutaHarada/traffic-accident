@@ -1,0 +1,502 @@
+🚀 Device: cuda
+🧵 Threads: 8
+======================================================================
+🚀 Spatio-Temporal 4-Model Ensemble
+   Data: data\spatio_temporal
+   Output: results\spatio_temporal_ensemble
+   Checkpoints: results\spatio_temporal_ensemble\checkpoints
+   Folds: 5, Seed: 42
+======================================================================
+
+📂 データ読み込み中...
+   Train: 1,305,369 行
+   Val:   307,296 行
+   Test:  282,376 行
+   Train+Val (学習用): 1,612,665 行
+   特徴量数: 60
+   カテゴリ: 42, 数値: 18
+   時空間特徴量: 10
+
+🌲 lgbm 学習中...
+   Fold 1/5...
+Training until validation scores don't improve for 50 rounds
+[100]	valid_0's auc: 0.888119
+[200]	valid_0's auc: 0.891578
+Early stopping, best iteration is:
+[214]	valid_0's auc: 0.891695
+      Fold 1 AUC: 0.8917
+   Fold 2/5...
+Training until validation scores don't improve for 50 rounds
+[100]	valid_0's auc: 0.894074
+[200]	valid_0's auc: 0.896386
+Early stopping, best iteration is:
+[204]	valid_0's auc: 0.896594
+      Fold 2 AUC: 0.8966
+   Fold 3/5...
+Training until validation scores don't improve for 50 rounds
+[100]	valid_0's auc: 0.888822
+[200]	valid_0's auc: 0.88996
+Early stopping, best iteration is:
+[176]	valid_0's auc: 0.890259
+      Fold 3 AUC: 0.8903
+   Fold 4/5...
+Training until validation scores don't improve for 50 rounds
+[100]	valid_0's auc: 0.887444
+[200]	valid_0's auc: 0.889873
+Early stopping, best iteration is:
+[186]	valid_0's auc: 0.889995
+      Fold 4 AUC: 0.8900
+   Fold 5/5...
+Training until validation scores don't improve for 50 rounds
+[100]	valid_0's auc: 0.890071
+[200]	valid_0's auc: 0.892857
+Early stopping, best iteration is:
+[215]	valid_0's auc: 0.893011
+      Fold 5 AUC: 0.8930
+   💾 lgbm チェックポイント保存完了
+   lgbm OOF AUC: 0.8922
+
+🐱 catboost 学習中...
+   Fold 1/5...
+0:	test: 0.8516389	best: 0.8516389 (0)	total: 2.25s	remaining: 1h 15m 7s
+100:	test: 0.8995422	best: 0.8995422 (100)	total: 3m	remaining: 56m 34s
+200:	test: 0.9042572	best: 0.9042572 (200)	total: 5m 38s	remaining: 50m 30s
+300:	test: 0.9069288	best: 0.9069288 (300)	total: 8m 18s	remaining: 46m 51s
+400:	test: 0.9090426	best: 0.9090426 (400)	total: 11m 30s	remaining: 45m 55s
+Stopped by overfitting detector  (50 iterations wait)
+
+bestTest = 0.9090426136
+bestIteration = 400
+
+Shrink model to first 401 iterations.
+      Fold 1 AUC: 0.9090
+   Fold 2/5...
+0:	test: 0.8552679	best: 0.8552679 (0)	total: 2.08s	remaining: 1h 9m 16s
+100:	test: 0.9005304	best: 0.9005304 (100)	total: 3m	remaining: 56m 35s
+200:	test: 0.9053539	best: 0.9053539 (200)	total: 5m 32s	remaining: 49m 33s
+300:	test: 0.9086856	best: 0.9087224 (298)	total: 8m 5s	remaining: 45m 38s
+Stopped by overfitting detector  (50 iterations wait)
+
+bestTest = 0.9099038601
+bestIteration = 331
+
+Shrink model to first 332 iterations.
+      Fold 2 AUC: 0.9099
+   Fold 3/5...
+0:	test: 0.8567548	best: 0.8567548 (0)	total: 2.11s	remaining: 1h 10m 13s
+100:	test: 0.8972164	best: 0.8972164 (100)	total: 2m 58s	remaining: 55m 49s
+200:	test: 0.9018302	best: 0.9018638 (199)	total: 5m 23s	remaining: 48m 12s
+300:	test: 0.9045266	best: 0.9045883 (297)	total: 8m 1s	remaining: 45m 15s
+Stopped by overfitting detector  (50 iterations wait)
+
+bestTest = 0.9054813955
+bestIteration = 344
+
+Shrink model to first 345 iterations.
+      Fold 3 AUC: 0.9055
+   Fold 4/5...
+0:	test: 0.8536243	best: 0.8536243 (0)	total: 2.11s	remaining: 1h 10m 14s
+100:	test: 0.9029921	best: 0.9029921 (100)	total: 3m 9s	remaining: 59m 24s
+200:	test: 0.9074985	best: 0.9074985 (200)	total: 5m 45s	remaining: 51m 28s
+300:	test: 0.9101354	best: 0.9101354 (300)	total: 8m 20s	remaining: 47m 2s
+400:	test: 0.9110926	best: 0.9111193 (399)	total: 11m 32s	remaining: 46m
+Stopped by overfitting detector  (50 iterations wait)
+
+bestTest = 0.9115590723
+bestIteration = 417
+
+Shrink model to first 418 iterations.
+      Fold 4 AUC: 0.9116
+   Fold 5/5...
+0:	test: 0.8541508	best: 0.8541508 (0)	total: 2.16s	remaining: 1h 11m 50s
+100:	test: 0.8995686	best: 0.8995686 (100)	total: 3m 7s	remaining: 58m 49s
+200:	test: 0.9042236	best: 0.9042236 (200)	total: 5m 41s	remaining: 50m 54s
+300:	test: 0.9074493	best: 0.9074493 (300)	total: 8m 24s	remaining: 47m 28s
+400:	test: 0.9094702	best: 0.9094804 (398)	total: 11m 40s	remaining: 46m 32s
+Stopped by overfitting detector  (50 iterations wait)
+
+bestTest = 0.9094804246
+bestIteration = 398
+
+Shrink model to first 399 iterations.
+      Fold 5 AUC: 0.9095
+   💾 catboost チェックポイント保存完了
+   catboost OOF AUC: 0.9090
+
+🧠 mlp 学習中...
+   Fold 1/5...
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+      Fold 1 AUC: 0.8922
+   Fold 2/5...
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+      Fold 2 AUC: 0.8947
+   Fold 3/5...
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+      Fold 3 AUC: 0.8918
+   Fold 4/5...
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+      Fold 4 AUC: 0.8913
+   Fold 5/5...
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+🚀 Device: cuda
+🧵 Threads: 8
+      Fold 5 AUC: 0.8937
+   💾 mlp チェックポイント保存完了
+   mlp OOF AUC: 0.8927
+
+📊 tabnet 学習中...
+   Fold 1/5...
+
+Early stopping occurred at epoch 33 with best_epoch = 13 and best_val_0_auc = 0.90658
+      Fold 1 AUC: 0.9066
+   Fold 2/5...
+
+Early stopping occurred at epoch 30 with best_epoch = 10 and best_val_0_auc = 0.90765
+      Fold 2 AUC: 0.9076
+   Fold 3/5...
+
+Early stopping occurred at epoch 34 with best_epoch = 14 and best_val_0_auc = 0.90306
+      Fold 3 AUC: 0.9031
+   Fold 4/5...
+
+Early stopping occurred at epoch 33 with best_epoch = 13 and best_val_0_auc = 0.90688
+      Fold 4 AUC: 0.9069
+   Fold 5/5...
+
+Early stopping occurred at epoch 22 with best_epoch = 2 and best_val_0_auc = 0.88397
+      Fold 5 AUC: 0.8840
+   💾 tabnet チェックポイント保存完了
+   tabnet OOF AUC: 0.8934
+
+⚖️ アンサンブル重み最適化中...
+   最適化された重み:
+     lgbm: 0.2343
+     catboost: 0.4086
+     mlp: 0.0873
+     tabnet: 0.2698
+   Ensemble OOF AUC: 0.9109
+
+📈 結果保存中...
+   lgbm: OOF AUC=0.8922, Test AUC=0.9068
+   catboost: OOF AUC=0.9090, Test AUC=0.9149
+   mlp: OOF AUC=0.8927, Test AUC=0.9038
+   tabnet: OOF AUC=0.8934, Test AUC=0.9145
+   ensemble: OOF AUC=0.9109, Test AUC=0.9169
+   ✅ 完了: results\spatio_temporal_ensemble
+
+======================================================================
+✅ 全工程完了！ 実行時間: 257.8分
+======================================================================

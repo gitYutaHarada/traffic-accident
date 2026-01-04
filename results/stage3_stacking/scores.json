@@ -1,0 +1,14 @@
+{
+  "oof_auc": 0.9093223318900322,
+  "oof_prauc": 0.18535913413576188,
+  "selected_features": [
+    "stage1_prob",
+    "single_ensemble",
+    "twostage_catboost",
+    "is_easy_sample"
+  ],
+  "regularization_c": 0.1,
+  "use_single_stage_imputation": true,
+  "test_auc": 0.9162042748723351,
+  "test_prauc": 0.2069457850986587
+}

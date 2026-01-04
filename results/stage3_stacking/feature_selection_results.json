@@ -1,0 +1,50 @@
+[
+  {
+    "set_name": "baseline",
+    "features": [
+      "stage1_prob",
+      "single_tabnet",
+      "twostage_catboost",
+      "tabnet_x_catboost",
+      "is_easy_sample"
+    ],
+    "oof_auc": 0.8845684146269631,
+    "oof_prauc": 0.15892160860725077,
+    "high_corr_pairs": 1
+  },
+  {
+    "set_name": "tabnet_focus",
+    "features": [
+      "single_tabnet",
+      "twostage_catboost",
+      "is_easy_sample"
+    ],
+    "oof_auc": 0.8812059126262671,
+    "oof_prauc": 0.16121063293266927,
+    "high_corr_pairs": 0
+  },
+  {
+    "set_name": "ensemble_based",
+    "features": [
+      "stage1_prob",
+      "single_ensemble",
+      "twostage_catboost",
+      "is_easy_sample"
+    ],
+    "oof_auc": 0.9093223318900322,
+    "oof_prauc": 0.18535913413576188,
+    "high_corr_pairs": 0
+  },
+  {
+    "set_name": "diversity",
+    "features": [
+      "single_tabnet",
+      "single_lgbm",
+      "twostage_catboost",
+      "is_easy_sample"
+    ],
+    "oof_auc": 0.8936106853083083,
+    "oof_prauc": 0.1792864734477453,
+    "high_corr_pairs": 0
+  }
+]

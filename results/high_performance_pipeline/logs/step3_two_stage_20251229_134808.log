@@ -1,0 +1,253 @@
+🚀 Device: cuda
+🧵 Threads: 8 (P-cores only)
+💾 Available RAM: 64GB
+======================================================================
+🚀 Two-Stage Spatio-Temporal 4-Model Ensemble
+   Spatio-Temporal Data: data\spatio_temporal
+   Stage 1 OOF: data\processed\stage1_oof_predictions.csv
+   Output: results\twostage_spatiotemporal_ensemble
+   Checkpoints: results\twostage_spatiotemporal_ensemble\checkpoints
+   Stage 1 Recall Target: 0.98
+   Folds: 5, Seed: 42
+======================================================================
+
+📂 データ読み込み中...
+   Train: 1,305,369 行
+   Val:   307,296 行
+   Test:  282,376 行
+   Train+Val (学習用): 1,612,665 行
+
+📊 特徴量:
+   数値: 28 列
+   カテゴリ: 31 列
+   合計: 59 列
+
+🔍 Stage 1 フィルタリング適用中...
+   Stage 1 閾値: 0.0645
+   Train OOF: 1,516,220 → 877,965 (通過率: 57.9%)
+   Test:      379,055 → 220,987 (通過率: 58.3%)
+   インデックス一致確認: Train 743,892, Test 31,523
+   フィルタ後 Train: 743,892 行
+   フィルタ後 Test:  31,523 行
+   Train Fatal: 6,358 (0.85%)
+   Test Fatal:  293 (0.93%)
+
+📈 lightgbm 学習中...
+   Fold 1/5...
+Training until validation scores don't improve for 50 rounds
+[100]	valid_0's auc: 0.896908
+[200]	valid_0's auc: 0.897968
+Early stopping, best iteration is:
+[166]	valid_0's auc: 0.898636
+      Fold 1 AUC: 0.8986
+   Fold 2/5...
+Training until validation scores don't improve for 50 rounds
+[100]	valid_0's auc: 0.8951
+[200]	valid_0's auc: 0.896186
+Early stopping, best iteration is:
+[236]	valid_0's auc: 0.896872
+      Fold 2 AUC: 0.8969
+   Fold 3/5...
+Training until validation scores don't improve for 50 rounds
+[100]	valid_0's auc: 0.895298
+[200]	valid_0's auc: 0.897253
+Early stopping, best iteration is:
+[208]	valid_0's auc: 0.897296
+      Fold 3 AUC: 0.8973
+   Fold 4/5...
+Training until validation scores don't improve for 50 rounds
+[100]	valid_0's auc: 0.901952
+[200]	valid_0's auc: 0.904554
+Early stopping, best iteration is:
+[177]	valid_0's auc: 0.904887
+      Fold 4 AUC: 0.9049
+   Fold 5/5...
+Training until validation scores don't improve for 50 rounds
+[100]	valid_0's auc: 0.901791
+[200]	valid_0's auc: 0.903832
+Early stopping, best iteration is:
+[156]	valid_0's auc: 0.904373
+      Fold 5 AUC: 0.9044
+   💾 lgbm チェックポイント保存完了
+   lgbm OOF AUC: 0.9002
+
+🐱 catboost 学習中...
+   Fold 1/5...
+0:	test: 0.5662389	best: 0.5662389 (0)	total: 903ms	remaining: 30m 5s
+100:	test: 0.8847654	best: 0.8847654 (100)	total: 1m 6s	remaining: 20m 51s
+200:	test: 0.8931782	best: 0.8931782 (200)	total: 2m 9s	remaining: 19m 19s
+300:	test: 0.8967503	best: 0.8967504 (299)	total: 3m 12s	remaining: 18m 8s
+400:	test: 0.8983368	best: 0.8983646 (399)	total: 4m 19s	remaining: 17m 13s
+500:	test: 0.8995310	best: 0.8995310 (500)	total: 5m 26s	remaining: 16m 15s
+600:	test: 0.9006134	best: 0.9006630 (593)	total: 6m 32s	remaining: 15m 14s
+700:	test: 0.9009536	best: 0.9009536 (700)	total: 7m 40s	remaining: 14m 12s
+800:	test: 0.9016540	best: 0.9016574 (799)	total: 8m 46s	remaining: 13m 8s
+900:	test: 0.9020634	best: 0.9020651 (898)	total: 9m 54s	remaining: 12m 4s
+1000:	test: 0.9023778	best: 0.9024303 (973)	total: 11m 2s	remaining: 11m 1s
+Stopped by overfitting detector  (50 iterations wait)
+
+bestTest = 0.9024303047
+bestIteration = 973
+
+Shrink model to first 974 iterations.
+      Fold 1 AUC: 0.9024
+   Fold 2/5...
+0:	test: 0.5855807	best: 0.5855807 (0)	total: 751ms	remaining: 25m 2s
+100:	test: 0.8870499	best: 0.8870912 (99)	total: 1m 5s	remaining: 20m 38s
+200:	test: 0.8950098	best: 0.8950098 (200)	total: 2m 13s	remaining: 19m 51s
+300:	test: 0.8969362	best: 0.8969550 (298)	total: 3m 18s	remaining: 18m 40s
+400:	test: 0.8981560	best: 0.8981651 (398)	total: 4m 26s	remaining: 17m 41s
+500:	test: 0.8990530	best: 0.8991047 (488)	total: 5m 34s	remaining: 16m 40s
+600:	test: 0.8994986	best: 0.8995830 (563)	total: 6m 41s	remaining: 15m 35s
+Stopped by overfitting detector  (50 iterations wait)
+
+bestTest = 0.8995830355
+bestIteration = 563
+
+Shrink model to first 564 iterations.
+      Fold 2 AUC: 0.8996
+   Fold 3/5...
+0:	test: 0.6208876	best: 0.6208876 (0)	total: 720ms	remaining: 23m 59s
+100:	test: 0.8795522	best: 0.8795522 (100)	total: 1m 2s	remaining: 19m 33s
+200:	test: 0.8891779	best: 0.8891779 (200)	total: 2m 7s	remaining: 19m
+300:	test: 0.8930007	best: 0.8930007 (300)	total: 3m 12s	remaining: 18m 8s
+400:	test: 0.8949567	best: 0.8949918 (399)	total: 4m 18s	remaining: 17m 10s
+500:	test: 0.8959009	best: 0.8959009 (500)	total: 5m 24s	remaining: 16m 9s
+600:	test: 0.8969626	best: 0.8969626 (600)	total: 6m 30s	remaining: 15m 9s
+700:	test: 0.8977301	best: 0.8977301 (700)	total: 7m 37s	remaining: 14m 7s
+800:	test: 0.8984231	best: 0.8984979 (778)	total: 8m 42s	remaining: 13m 2s
+900:	test: 0.8990098	best: 0.8990383 (876)	total: 9m 49s	remaining: 11m 58s
+1000:	test: 0.8993952	best: 0.8994676 (985)	total: 10m 56s	remaining: 10m 54s
+Stopped by overfitting detector  (50 iterations wait)
+
+bestTest = 0.8994676469
+bestIteration = 985
+
+Shrink model to first 986 iterations.
+      Fold 3 AUC: 0.8995
+   Fold 4/5...
+0:	test: 0.6294580	best: 0.6294580 (0)	total: 647ms	remaining: 21m 32s
+100:	test: 0.8846291	best: 0.8846291 (100)	total: 1m 1s	remaining: 19m 17s
+200:	test: 0.8940894	best: 0.8940894 (200)	total: 2m 6s	remaining: 18m 52s
+300:	test: 0.8972767	best: 0.8972767 (300)	total: 3m 8s	remaining: 17m 41s
+400:	test: 0.8991704	best: 0.8991704 (400)	total: 4m 14s	remaining: 16m 54s
+500:	test: 0.9007408	best: 0.9007408 (500)	total: 5m 20s	remaining: 15m 59s
+600:	test: 0.9017659	best: 0.9017659 (600)	total: 6m 27s	remaining: 15m 1s
+700:	test: 0.9024089	best: 0.9024209 (699)	total: 7m 32s	remaining: 13m 59s
+800:	test: 0.9032273	best: 0.9032334 (798)	total: 8m 39s	remaining: 12m 58s
+900:	test: 0.9032443	best: 0.9034420 (858)	total: 9m 47s	remaining: 11m 56s
+Stopped by overfitting detector  (50 iterations wait)
+
+bestTest = 0.9034419879
+bestIteration = 858
+
+Shrink model to first 859 iterations.
+      Fold 4 AUC: 0.9034
+   Fold 5/5...
+0:	test: 0.6114960	best: 0.6114960 (0)	total: 673ms	remaining: 22m 25s
+100:	test: 0.8826811	best: 0.8826811 (100)	total: 1m 2s	remaining: 19m 43s
+200:	test: 0.8905656	best: 0.8905752 (197)	total: 2m 1s	remaining: 18m 8s
+300:	test: 0.8940403	best: 0.8940780 (293)	total: 3m 6s	remaining: 17m 31s
+400:	test: 0.8980440	best: 0.8980440 (400)	total: 4m 13s	remaining: 16m 49s
+500:	test: 0.8989978	best: 0.8989978 (500)	total: 5m 19s	remaining: 15m 56s
+600:	test: 0.9003328	best: 0.9003515 (598)	total: 6m 26s	remaining: 14m 58s
+700:	test: 0.9012726	best: 0.9012831 (683)	total: 7m 33s	remaining: 14m
+800:	test: 0.9019932	best: 0.9020234 (798)	total: 8m 40s	remaining: 12m 59s
+900:	test: 0.9022846	best: 0.9022864 (897)	total: 9m 48s	remaining: 11m 58s
+1000:	test: 0.9025772	best: 0.9025880 (960)	total: 10m 57s	remaining: 10m 55s
+1100:	test: 0.9030533	best: 0.9031447 (1069)	total: 12m 4s	remaining: 9m 51s
+1200:	test: 0.9032480	best: 0.9033557 (1168)	total: 13m 11s	remaining: 8m 46s
+Stopped by overfitting detector  (50 iterations wait)
+
+bestTest = 0.9033556742
+bestIteration = 1168
+
+Shrink model to first 1169 iterations.
+      Fold 5 AUC: 0.9034
+   💾 catboost チェックポイント保存完了
+   catboost OOF AUC: 0.9016
+
+🧠 mlp 学習中...
+   Fold 1/5...
+🚀 Device: cuda
+🧵 Threads: 8 (P-cores only)
+💾 Available RAM: 64GB
+🚀 Device: cuda
+🧵 Threads: 8 (P-cores only)
+💾 Available RAM: 64GB
+🚀 Device: cuda
+🧵 Threads: 8 (P-cores only)
+💾 Available RAM: 64GB
+🚀 Device: cuda
+🧵 Threads: 8 (P-cores only)
+💾 Available RAM: 64GB
+Traceback (most recent call last):
+  File "C:\Users\socce\software-lab\traffic-accident\scripts\modeling\train_stage2_4models_spatiotemporal_twostage.py", line 1148, in <module>
+    main()
+  File "C:\Users\socce\software-lab\traffic-accident\scripts\modeling\train_stage2_4models_spatiotemporal_twostage.py", line 1144, in main
+    ensemble.run()
+  File "C:\Users\socce\software-lab\traffic-accident\scripts\modeling\train_stage2_4models_spatiotemporal_twostage.py", line 1096, in run
+    self.train_mlp()
+  File "C:\Users\socce\software-lab\traffic-accident\scripts\modeling\train_stage2_4models_spatiotemporal_twostage.py", line 710, in train_mlp
+    for batch_X, batch_y in train_loader:
+                            ^^^^^^^^^^^^
+  File "C:\Users\socce\AppData\Local\Programs\Python\Python312\Lib\site-packages\torch\utils\data\dataloader.py", line 741, in __next__
+    data = self._next_data()
+           ^^^^^^^^^^^^^^^^^
+  File "C:\Users\socce\AppData\Local\Programs\Python\Python312\Lib\site-packages\torch\utils\data\dataloader.py", line 1548, in _next_data
+    return self._process_data(data, worker_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\socce\AppData\Local\Programs\Python\Python312\Lib\site-packages\torch\utils\data\dataloader.py", line 1586, in _process_data
+    data.reraise()
+  File "C:\Users\socce\AppData\Local\Programs\Python\Python312\Lib\site-packages\torch\_utils.py", line 782, in reraise
+    raise exception
+RuntimeError: Caught RuntimeError in pin memory thread for device 0.
+Original Traceback (most recent call last):
+  File "C:\Users\socce\AppData\Local\Programs\Python\Python312\Lib\site-packages\torch\utils\data\_utils\pin_memory.py", line 34, in do_one_step
+    data = pin_memory(data, device)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\socce\AppData\Local\Programs\Python\Python312\Lib\site-packages\torch\utils\data\_utils\pin_memory.py", line 100, in pin_memory
+    clone[i] = pin_memory(item, device)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\socce\AppData\Local\Programs\Python\Python312\Lib\site-packages\torch\utils\data\_utils\pin_memory.py", line 57, in pin_memory
+    return data.pin_memory(device)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: cannot pin 'torch.cuda.FloatTensor' only dense CPU tensors can be pinned
+
+🚀 Device: cuda
+🧵 Threads: 8 (P-cores only)
+💾 Available RAM: 64GB
+🚀 Device: cuda
+🧵 Threads: 8 (P-cores only)
+💾 Available RAM: 64GB
+🚀 Device: cuda
+🧵 Threads: 8 (P-cores only)
+💾 Available RAM: 64GB
+🚀 Device: cuda
+🧵 Threads: 8 (P-cores only)
+💾 Available RAM: 64GB
+🚀 Device: cuda
+🧵 Threads: 8 (P-cores only)
+💾 Available RAM: 64GB
+🚀 Device: cuda
+🧵 Threads: 8 (P-cores only)
+💾 Available RAM: 64GB
+🚀 Device: cuda
+🧵 Threads: 8 (P-cores only)
+💾 Available RAM: 64GB
+🚀 Device: cuda
+🧵 Threads: 8 (P-cores only)
+💾 Available RAM: 64GB
+🚀 Device: cuda
+🧵 Threads: 8 (P-cores only)
+💾 Available RAM: 64GB
+🚀 Device: cuda
+🧵 Threads: 8 (P-cores only)
+💾 Available RAM: 64GB
+🚀 Device: cuda
+🧵 Threads: 8 (P-cores only)
+💾 Available RAM: 64GB
+🚀 Device: cuda
+🧵 Threads: 8 (P-cores only)
+💾 Available RAM: 64GB
+[W1229 14:43:42.000000000 CudaIPCTypes.cpp:16] Producer process has been terminated before all shared CUDA tensors released. See Note [Sharing CUDA tensors]
